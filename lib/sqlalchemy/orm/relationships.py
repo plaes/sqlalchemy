@@ -638,8 +638,8 @@ class RelationshipProperty(StrategizedProperty):
         if strategy_class:
             self.strategy_class = strategy_class
         else:
-            self.strategy_class = self._strategy_lookup(lazy=self.lazy)
-        self._lazy_strategy = self._strategy_lookup(lazy="select")
+            self.strategy_class = self._strategy_lookup(("lazy", self.lazy))
+        self._lazy_strategy = self._strategy_lookup(("lazy", "select"))
 
         self._reverse_property = set()
 

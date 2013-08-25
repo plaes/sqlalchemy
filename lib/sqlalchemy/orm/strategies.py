@@ -18,8 +18,7 @@ from .state import InstanceState
 from .util import _none_set
 from . import properties
 from .interfaces import (
-    LoaderStrategy, StrategizedOption, MapperOption, PropertyOption,
-    StrategizedProperty
+    LoaderStrategy, StrategizedProperty
     )
 from .session import _state_session
 import itertools
@@ -268,29 +267,6 @@ class LoadDeferredColumns(object):
         strategy = prop._strategies[DeferredColumnLoader]
         return strategy._load_for_state(state, passive)
 
-
-class DeferredOption(StrategizedOption):
-    propagate_to_loaders = True
-
-    def __init__(self, key, defer=False):
-        super(DeferredOption, self).__init__(key)
-        self.defer = defer
-
-    def get_strategy_class(self):
-        if self.defer:
-            return DeferredColumnLoader
-        else:
-            return ColumnLoader
-
-
-class UndeferGroupOption(MapperOption):
-    propagate_to_loaders = True
-
-    def __init__(self, group):
-        self.group = group
-
-    def process_query(self, query):
-        query._attributes[("undefer", self.group)] = True
 
 
 class AbstractRelationshipLoader(LoaderStrategy):
@@ -1337,84 +1313,6 @@ class JoinedLoader(AbstractRelationshipLoader):
                 load_scalar_from_joined_existing_row, \
                 None, load_scalar_from_joined_exec
 
-
-class EagerLazyOption(StrategizedOption):
-    def __init__(self, key, lazy=True, chained=False,
-                    propagate_to_loaders=True
-                    ):
-        if isinstance(key[0], str) and key[0] == '*':
-            if len(key) != 1:
-                raise sa_exc.ArgumentError(
-                        "Wildcard identifier '*' must "
-                        "be specified alone.")
-            key = ("relationship:*",)
-            propagate_to_loaders = False
-        super(EagerLazyOption, self).__init__(key)
-        self.lazy = lazy
-        self.chained = chained
-        self.propagate_to_loaders = propagate_to_loaders
-        self.strategy_cls = properties.RelationshipProperty._strategy_lookup(lazy=lazy)
-
-    def get_strategy_class(self):
-        return self.strategy_cls
-
-
-class EagerJoinOption(PropertyOption):
-
-    def __init__(self, key, innerjoin, chained=False):
-        super(EagerJoinOption, self).__init__(key)
-        self.innerjoin = innerjoin
-        self.chained = chained
-
-    def process_query_property(self, query, paths):
-        if self.chained:
-            for path in paths:
-                path.set(query._attributes, "eager_join_type", self.innerjoin)
-        else:
-            paths[-1].set(query._attributes, "eager_join_type", self.innerjoin)
-
-
-class LoadEagerFromAliasOption(PropertyOption):
-
-    def __init__(self, key, alias=None, chained=False):
-        super(LoadEagerFromAliasOption, self).__init__(key)
-        if alias is not None:
-            if not isinstance(alias, str):
-                info = inspect(alias)
-                alias = info.selectable
-        self.alias = alias
-        self.chained = chained
-
-    def process_query_property(self, query, paths):
-        if self.chained:
-            for path in paths[0:-1]:
-                (root_mapper, prop) = path.path[-2:]
-                adapter = query._polymorphic_adapters.get(prop.mapper, None)
-                path.setdefault(query._attributes,
-                            "user_defined_eager_row_processor",
-                            adapter)
-
-        root_mapper, prop = paths[-1].path[-2:]
-        if self.alias is not None:
-            if isinstance(self.alias, str):
-                self.alias = prop.target.alias(self.alias)
-            paths[-1].set(query._attributes,
-                    "user_defined_eager_row_processor",
-                    sql_util.ColumnAdapter(self.alias,
-                                equivalents=prop.mapper._equivalent_columns)
-            )
-        else:
-            if paths[-1].contains(query._attributes, "path_with_polymorphic"):
-                with_poly_info = paths[-1].get(query._attributes,
-                                                "path_with_polymorphic")
-                adapter = orm_util.ORMAdapter(
-                            with_poly_info.entity,
-                            equivalents=prop.mapper._equivalent_columns)
-            else:
-                adapter = query._polymorphic_adapters.get(prop.mapper, None)
-            paths[-1].set(query._attributes,
-                                "user_defined_eager_row_processor",
-                                adapter)
 
 
 def single_parent_validator(desc, prop):

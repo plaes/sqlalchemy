@@ -166,6 +166,14 @@ class PropRegistry(PathRegistry):
         self.parent = parent
         self.path = parent.path + (prop,)
 
+    @property
+    def entity(self):
+        return self.prop.mapper
+
+    @property
+    def entity_path(self):
+        return self[self.entity]
+
     def __getitem__(self, entity):
         if isinstance(entity, (int, slice)):
             return self.path[entity]
@@ -182,8 +190,12 @@ class EntityRegistry(PathRegistry, dict):
         self.key = entity
         self.parent = parent
         self.is_aliased_class = entity.is_aliased_class
-
+        self.entity = entity
         self.path = parent.path + (entity,)
+
+    @property
+    def entity_path(self):
+        return self
 
     def __bool__(self):
         return True

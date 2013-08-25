@@ -24,7 +24,8 @@ from . import (
     attributes, interfaces, object_mapper, persistence,
     exc as orm_exc, loading
     )
-from .base import _entity_descriptor, _is_aliased_class, _is_mapped_class, _orm_columns
+from .base import _entity_descriptor, _is_aliased_class, \
+            _is_mapped_class, _orm_columns, _generative
 from .path_registry import PathRegistry
 from .util import (
     AliasedClass, ORMAdapter, join as orm_join, with_parent, aliased
@@ -39,18 +40,6 @@ from . import properties
 
 __all__ = ['Query', 'QueryContext', 'aliased']
 
-
-def _generative(*assertions):
-    """Mark a method as generative."""
-
-    @util.decorator
-    def generate(fn, *args, **kw):
-        self = args[0]._clone()
-        for assertion in assertions:
-            assertion(self, fn.__name__)
-        fn(self, *args[1:], **kw)
-        return self
-    return generate
 
 _path_registry = PathRegistry.root
 
