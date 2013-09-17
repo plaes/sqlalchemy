@@ -9,6 +9,7 @@
     .. change::
         :tags: bug, orm
         :tickets: 2807
+        :versions: 0.8.3, 0.9.0
 
         Fixed bug where list instrumentation would fail to represent a
         setslice of ``[0:0]`` correctly, which in particular could occur

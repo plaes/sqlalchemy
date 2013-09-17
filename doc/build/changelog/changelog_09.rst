@@ -3,16 +3,14 @@
 0.9 Changelog
 ==============
 
+.. changelog_imports::
+
+    .. include:: changelog_08.rst
+
+    .. include:: changelog_07.rst
+
 .. changelog::
     :version: 0.9.0
-
-    .. change::
-        :tags: bug, orm
-        :tickets: 2818
-
-        Fixed bug where :meth:`.Query.exists` failed to work correctly
-        without any WHERE criterion.  Courtesy Vladimir Magamedov.
-        Also in 0.8.3.
 
     .. change::
         :tags: bug, sql
@@ -89,16 +87,6 @@
         :class:`.CreateColumn` construct can be appled to a custom
         compilation rule which allows skipping of columns, by producing
         a rule that returns ``None``.  Also in 0.8.3.
-
-    .. change::
-        :tags: bug, orm
-        :tickets: 2807
-
-        Fixed bug where list instrumentation would fail to represent a
-        setslice of ``[0:0]`` correctly, which in particular could occur
-        when using ``insert(0, item)`` with the association proxy.  Due
-        to some quirk in Python collections, the issue was much more likely
-        with Python 3 rather than 2.  Also in 0.8.3, 0.7.11.
 
     .. change::
         :tags: bug, orm
