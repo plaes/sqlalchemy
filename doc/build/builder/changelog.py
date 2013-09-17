@@ -185,9 +185,9 @@ class ChangeLogDirective(EnvDirective, Directive):
             backported_changes = rec['sorted_versions'][rec['sorted_versions'].index(self.version) + 1:]
             if backported_changes:
                 backported = nodes.paragraph('')
-                backported_text = "This change is also backported: %s" % (
-                        ", ".join(backported_changes))
-                backported.append(nodes.Text(backported_text, backported_text))
+                backported.append(nodes.Text("This change is also ", ""))
+                backported.append(nodes.strong("", "backported"))
+                backported.append(nodes.Text(" to: %s" % ", ".join(backported_changes), ""))
                 para.append(backported)
 
         insert_ticket = nodes.paragraph('')
@@ -204,7 +204,7 @@ class ChangeLogDirective(EnvDirective, Directive):
                 if i > 0:
                     insert_ticket.append(nodes.Text(", ", ", "))
                 else:
-                    insert_ticket.append(nodes.Text(" ", " "))
+                    insert_ticket.append(nodes.Text("References: """))
                 i += 1
                 if render is not None:
                     refuri = render % refname
@@ -265,6 +265,11 @@ class ChangeDirective(EnvDirective, Directive):
         declared_version = self.env.temp_data['ChangeLogDirective_version']
         versions = set(_comma_list(content.get("versions", ""))).difference(['']).\
                             union([declared_version])
+
+        # if we don't refer to any other versions and we're in an include,
+        # skip
+        if len(versions) == 1 and 'ChangeLogDirective_includes' in self.env.temp_data:
+            return []
 
         def int_ver(ver):
             out = []
