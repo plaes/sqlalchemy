@@ -135,7 +135,7 @@ class RootRegistry(PathRegistry):
 
     """
     path = ()
-
+    has_entity = False
     def __getitem__(self, entity):
         return entity._path_registry
 PathRegistry.root = RootRegistry()
@@ -189,6 +189,10 @@ class PropRegistry(PathRegistry):
         self.path = parent.path + (prop,)
 
     @property
+    def has_entity(self):
+        return hasattr(self.prop, "mapper")
+
+    @property
     def entity(self):
         return self.prop.mapper
 
@@ -207,6 +211,7 @@ class PropRegistry(PathRegistry):
 
 class EntityRegistry(PathRegistry, dict):
     is_aliased_class = False
+    has_entity = True
 
     def __init__(self, parent, entity):
         self.key = entity

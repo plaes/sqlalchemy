@@ -519,8 +519,8 @@ class MapperOption(object):
 class Load(Generative, MapperOption):
     def __init__(self, entity):
         if entity is not None:
-            self.insp = inspect(entity)
-            self.path = self.insp._path_registry
+            insp = inspect(entity)
+            self.path = insp._path_registry
             self.materialized = True
         else:
             self.path = GenericRegistry(None, None, None)
@@ -528,6 +528,7 @@ class Load(Generative, MapperOption):
             self._unmaterialized = set([self])
         self.context = {}
 
+    column = False
     propagate_to_loaders = False
 
     def _materialize(self, query, raiseerr):
@@ -568,12 +569,17 @@ class Load(Generative, MapperOption):
                 path = self._generate_real_path(path, token)
 
         self.path = path
-        self.path.set(self.context, "loader", self)
 
-    def _generate(self, path=None):
+        if path.has_entity:
+            self.path.parent.set(self.context, "loader", self)
+        else:
+            self.path.set(self.context, "loader", self)
+
+    def _generate(self, path=None, column=False):
         gen = super(Load, self)._generate()
         if path:
             gen.path = path
+        gen.column = column
         if not gen.materialized:
             gen._unmaterialized.add(gen)
         return gen
@@ -648,11 +654,7 @@ class Load(Generative, MapperOption):
     def _generate_real_path(self, orm_util, path, attr):
         if isinstance(attr, util.string_types):
             attr = path.entity.attrs[attr]
-    # TODO: need to figure out how to land path on the entity,
-    # not the prop, for _of_type, but then still have defer
-    # work out here
-            path = path.entity_path[attr]
-#            path = path[attr]
+            path = path[attr]
         else:
             prop = attr.property
             if getattr(attr, '_of_type', None):
@@ -661,18 +663,19 @@ class Load(Generative, MapperOption):
 
                 path_element = ext_info.mapper
                 if not ext_info.is_aliased_class:
-                    ac = orm_util.with_polymorphic(
-                                ext_info.mapper.base_mapper,
-                                ext_info.mapper, aliased=True,
-                                _use_mapper_path=True)
-                    ext_info = inspect(ac)
                     if self.materialized:
+                        ac = orm_util.with_polymorphic(
+                                    ext_info.mapper.base_mapper,
+                                    ext_info.mapper, aliased=True,
+                                    _use_mapper_path=True)
                         path.entity_path[prop].set(self.context,
-                                            "path_with_polymorphic", ext_info)
+                                            "path_with_polymorphic", inspect(ac))
+                path = path[prop][path_element]
+            else:
+                path = path[prop]
 
-            path = path.entity_path[prop]
-            #path = path[prop]
-
+        if path.has_entity:
+            path = path.entity_path
         return path
 
     def _generate_path(self, path, attr):
@@ -688,14 +691,14 @@ class Load(Generative, MapperOption):
         self.path = self._generate_path(self.path, attr)
         self.strategy = key
         if self.materialized:
-            self.path.set(self.context, "loader", self)
+            self.path.parent.set(self.context, "loader", self)
 
     @_generative
     def _set_column_strategy(self, attrs, key):
-        self.strategy = key
         for attr in attrs:
             path = self._generate_path(self.path, attr)
-            cloned = self._generate(path)
+            cloned = self._generate(path, column=True)
+            cloned.strategy = key
             if self.materialized:
                 path.set(self.context, "loader", cloned)
 
@@ -714,7 +717,10 @@ class Load(Generative, MapperOption):
     @util.memoized_property
     def strategy_impl(self):
         assert self.materialized
-        return self.path.prop._get_strategy(self.strategy)
+        if self.column:
+            return self.path.prop._get_strategy(self.strategy)
+        else:
+            return self.path.parent.prop._get_strategy(self.strategy)
 
 
 class LoaderStrategy(object):
