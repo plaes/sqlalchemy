@@ -541,6 +541,8 @@ class Load(Generative, MapperOption):
         if current_path:
             start_path = self._chop_path(start_path, current_path)
 
+        self.materialized = True
+
         if not start_path:
             path = PathRegistry.root
         else:
@@ -567,7 +569,6 @@ class Load(Generative, MapperOption):
 
         self.path = path
         self.path.set(self.context, "loader", self)
-        self.materialized = True
 
     def _generate(self, path=None):
         gen = super(Load, self)._generate()
@@ -643,12 +644,35 @@ class Load(Generative, MapperOption):
 
         query._attributes.update(self.context)
 
-    def _generate_real_path(self, path, attr):
+    @util.dependencies("sqlalchemy.orm.util")
+    def _generate_real_path(self, orm_util, path, attr):
         if isinstance(attr, util.string_types):
             attr = path.entity.attrs[attr]
+    # TODO: need to figure out how to land path on the entity,
+    # not the prop, for _of_type, but then still have defer
+    # work out here
+            path = path.entity_path[attr]
+#            path = path[attr]
         else:
-            attr = attr.property
-        path = path.entity_path[attr]
+            prop = attr.property
+            if getattr(attr, '_of_type', None):
+                ac = attr._of_type
+                ext_info = inspect(ac)
+
+                path_element = ext_info.mapper
+                if not ext_info.is_aliased_class:
+                    ac = orm_util.with_polymorphic(
+                                ext_info.mapper.base_mapper,
+                                ext_info.mapper, aliased=True,
+                                _use_mapper_path=True)
+                    ext_info = inspect(ac)
+                    if self.materialized:
+                        path.entity_path[prop].set(self.context,
+                                            "path_with_polymorphic", ext_info)
+
+            path = path.entity_path[prop]
+            #path = path[prop]
+
         return path
 
     def _generate_path(self, path, attr):
@@ -657,6 +681,7 @@ class Load(Generative, MapperOption):
         else:
             path = path[attr]
         return path
+
 
     @_generative
     def _set_strategy(self, attr, key):
