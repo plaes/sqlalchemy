@@ -544,29 +544,11 @@ class Load(Generative, MapperOption):
         token = start_path[0].token
         if isinstance(token, str):
 
-            # exhaust current_path before
-            # matching tokens to entities
-            #if current_path:
-            #    if current_path[1].key == token:
-            #        current_path = current_path[2:]
-            #        continue
-            #    else:
-            #        return no_result
-
             entity = self._find_entity_basestring(query, token, conditional)
 
         elif isinstance(token, PropComparator):
             prop = token.property
 
-            # exhaust current_path before
-            # matching tokens to entities
-            #if current_path:
-            #    if current_path[0:2] == \
-            #            [token._parententity, prop]:
-            #       current_path = current_path[2:]
-            #        continue
-            #    else:
-            #        return no_result
             entity = self._find_entity_prop_comparator(
                                     query,
                                     prop.key,
@@ -578,33 +560,14 @@ class Load(Generative, MapperOption):
                     "mapper option expects "
                     "string key or list of attributes")
 
-    def _chop_path(self, to_chop, path):
-
+    def _chop_path(to_chop, path):
+        i = -1
         for i, (c_token, (p_mapper, p_prop)) in enumerate(zip(to_chop, path.pairs())):
-
-        them = path
-
-        for i, token in enumerate(generic_path.path[1:]):
-            try:
-                if isinstance(token, PropComparator):
-                    them = them.entity.attrs[token]
-                elif isinstance(token, str):
-                    them = them.entity.attrs[token]
-                else:
-                    assert False
-            except KeyError:
-                if raiseerr:
-                    raise sa_exc.ArgumentError(
-                        "Can't find property named '%s' on the "
-                        "mapped entity %s in this Query. " % (
-                            token, them.entity)
-                    )
-                else:
-                    return None
-            else:
-                them = them.mapper._path_registry
-
-        return generic_path[i:]
+            if c_token.property is not p_prop.property:
+                break
+        else:
+            i += 1
+        return to_chop[i:]
 
 
     def _find_entity_prop_comparator(self, query, token, mapper, conditional):
