@@ -178,7 +178,7 @@ class DeferredColumnLoader(LoaderStrategy):
 
         key = self.key
         if col in row:
-            return self.parent_property._get_strategy(ColumnLoader).\
+            return self.parent_property._get_strategy_by_cls(ColumnLoader).\
                         create_row_processor(
                                 context, path, mapper, row, adapter)
 
@@ -209,7 +209,7 @@ class DeferredColumnLoader(LoaderStrategy):
                 self.group is not None and
                 context.attributes.get(('undefer', self.group), False)
             ) or (only_load_props and self.key in only_load_props):
-            self.parent_property._get_strategy(ColumnLoader).\
+            self.parent_property._get_strategy_by_cls(ColumnLoader).\
                             setup_query(context, entity,
                                         path, adapter, **kwargs)
 
@@ -627,7 +627,7 @@ class LoadLazyAttribute(object):
 class ImmediateLoader(AbstractRelationshipLoader):
     def init_class_attribute(self, mapper):
         self.parent_property.\
-                _get_strategy(LazyLoader).\
+                _get_strategy_by_cls(LazyLoader).\
                 init_class_attribute(mapper)
 
     def setup_query(self, context, entity,
@@ -652,7 +652,7 @@ class SubqueryLoader(AbstractRelationshipLoader):
 
     def init_class_attribute(self, mapper):
         self.parent_property.\
-                _get_strategy(LazyLoader).\
+                _get_strategy_by_cls(LazyLoader).\
                 init_class_attribute(mapper)
 
     def setup_query(self, context, entity,
@@ -976,7 +976,7 @@ class JoinedLoader(AbstractRelationshipLoader):
 
     def init_class_attribute(self, mapper):
         self.parent_property.\
-            _get_strategy(LazyLoader).init_class_attribute(mapper)
+            _get_strategy_by_cls(LazyLoader).init_class_attribute(mapper)
 
     def setup_query(self, context, entity, path, adapter, \
                                 column_collection=None, parentmapper=None,
@@ -1251,7 +1251,7 @@ class JoinedLoader(AbstractRelationshipLoader):
                 return self._create_collection_loader(context, key, _instance)
         else:
             return self.parent_property.\
-                            _get_strategy(LazyLoader).\
+                            _get_strategy_by_cls(LazyLoader).\
                             create_row_processor(
                                             context, path,
                                             mapper, row, adapter)

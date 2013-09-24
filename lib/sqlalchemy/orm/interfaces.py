@@ -21,8 +21,6 @@ from __future__ import absolute_import
 from .. import exc as sa_exc, util, inspect
 from ..sql import operators
 from collections import deque
-from .base import _is_aliased_class, _class_to_mapper
-from ..sql.base import _generative, Generative
 from .base import ONETOMANY, MANYTOONE, MANYTOMANY, EXT_CONTINUE, EXT_STOP, NOT_EXTENSION
 from .base import _InspectionAttr, _MappedAttribute
 from .path_registry import PathRegistry
@@ -446,9 +444,13 @@ class StrategizedProperty(MapperProperty):
         try:
             return self._strategies[key]
         except KeyError:
+
             cls = self._strategy_lookup(*key)
-            self._strategies[key] = strategy = cls(self)
+            self._strategies[key] = self._strategies[cls] = strategy = cls(self)
             return strategy
+
+    def _get_strategy_by_cls(self, cls):
+        return self._get_strategy(cls._strategy_keys[0])
 
     def setup(self, context, entity, path, adapter, **kwargs):
         self._get_context_strategy(context, path).\
@@ -517,225 +519,6 @@ class MapperOption(object):
         self.process_query(query)
 
 
-class Load(Generative, MapperOption):
-    def __init__(self, entity):
-        insp = inspect(entity)
-        self.path = insp._path_registry
-        self.context = {}
-
-    strategy = None
-    propagate_to_loaders = False
-
-    def process_query(self, query):
-        self._process(query, True)
-
-    def process_query_conditionally(self, query):
-        self._process(query, False)
-
-    def _process(self, query, raiseerr):
-        query._attributes.update(self.context)
-
-    @util.dependencies("sqlalchemy.orm.util")
-    def _generate_path(self, orm_util, path, attr):
-        if isinstance(attr, util.string_types):
-            attr = path.entity.attrs[attr]
-            path = path[attr]
-        else:
-            prop = attr.property
-            if getattr(attr, '_of_type', None):
-                ac = attr._of_type
-                ext_info = inspect(ac)
-
-                path_element = ext_info.mapper
-                if not ext_info.is_aliased_class:
-                    ac = orm_util.with_polymorphic(
-                                ext_info.mapper.base_mapper,
-                                ext_info.mapper, aliased=True,
-                                _use_mapper_path=True)
-                    path.entity_path[prop].set(self.context,
-                                        "path_with_polymorphic", inspect(ac))
-                path = path[prop][path_element]
-            else:
-                path = path[prop]
-
-        if path.has_entity:
-            path = path.entity_path
-        return path
-
-    @_generative
-    def _set_strategy(self, attr, strategy):
-        self.path = self._generate_path(self.path, attr)
-        self.strategy = strategy
-        self.path.parent.set(self.context, "loader", self)
-
-    @_generative
-    def _set_column_strategy(self, attrs, strategy):
-        for attr in attrs:
-            path = self._generate_path(self.path, attr)
-            cloned = self._generate()
-            cloned.strategy = strategy
-            cloned.path = path
-            path.set(self.context, "loader", cloned)
-
-    def defer(self, *attrs):
-        return self._set_column_strategy(
-                    attrs,
-                    (("deferred", True), ("instrument", True))
-                )
-
-    def joined(self, attr, innerjoin=None):
-        loader = self._set_strategy(
-                    attr,
-                    (("lazy", "joined"),)
-                )
-        if innerjoin is not None:
-            loader._set_options(eager_join_type=innerjoin)
-        return loader
-
-    def _set_options(self, **kw):
-        if self.path.has_entity:
-            target_path = self.path.parent
-        else:
-            target_path = self.path
-        for k, v in kw.items():
-            target_path.set(self.context, k, v)
-
-    @util.memoized_property
-    def strategy_impl(self):
-        if self.path.has_entity:
-            return self.path.parent.prop._get_strategy(self.strategy)
-        else:
-            return self.path.prop._get_strategy(self.strategy)
-
-class _UnmaterializedLoad(Load):
-    def __init__(self):
-        self.path = ()
-        self._unmaterialized = set()
-        self.local_opts = {}
-
-    def _generate(self):
-        cloned = super(_UnmaterializedLoad, self)._generate()
-        cloned.local_opts = {}
-        return cloned
-
-    def _set_options(self, **kw):
-        self.local_opts.update(kw)
-
-    def _process(self, query, raiseerr):
-        context = {}
-        for val in self._unmaterialized:
-            val._materialize(query, context, raiseerr)
-        query._attributes.update(context)
-
-    @_generative
-    def _set_strategy(self, attr, strategy):
-        self.path = self._generate_path(self.path, attr)
-        self.strategy = strategy
-        self._unmaterialized.add(self)
-
-    @_generative
-    def _set_column_strategy(self, attrs, strategy):
-        for attr in attrs:
-            path = self._generate_path(self.path, attr)
-            cloned = self._generate()
-            cloned.strategy = strategy
-            cloned.path = path
-            self._unmaterialized.add(cloned)
-
-    def _materialize(self, query, context, raiseerr):
-        start_path = self.path
-        # _current_path implies we're in a
-        # secondary load with an existing path
-        current_path = list(query._current_path.path)
-        if current_path:
-            start_path = self._chop_path(start_path, current_path)
-
-        token = start_path[0]
-        if isinstance(token, str):
-            entity = self._find_entity_basestring(query, token, raiseerr)
-        elif isinstance(token, PropComparator):
-            prop = token.property
-            entity = self._find_entity_prop_comparator(
-                                    query,
-                                    prop.key,
-                                    token._parententity,
-                                    raiseerr)
-
-        else:
-            raise sa_exc.ArgumentError(
-                    "mapper option expects "
-                    "string key or list of attributes")
-
-        path_element = entity.entity_zero
-
-        # transfer our entity-less state into a Load() object
-        # with a real entity path.
-        loader = Load(path_element)
-        loader.context = context
-        loader.strategy = self.strategy
-        for token in start_path:
-            loader.path = loader._generate_path(loader.path, token)
-        if loader.path.has_entity:
-            loader.path.parent.set(context, "loader", loader)
-        else:
-            loader.path.set(context, "loader", loader)
-        if self.local_opts:
-            loader._set_options(**self.local_opts)
-
-    def _generate_path(self, path, attr):
-        return path + (attr, )
-
-    def _chop_path(to_chop, path):
-        i = -1
-        for i, (c_token, (p_mapper, p_prop)) in enumerate(zip(to_chop, path.pairs())):
-            if c_token.property is not p_prop.property:
-                break
-        else:
-            i += 1
-        return to_chop[i:]
-
-    def _find_entity_prop_comparator(self, query, token, mapper, conditional):
-        if _is_aliased_class(mapper):
-            searchfor = mapper
-        else:
-            searchfor = _class_to_mapper(mapper)
-        for ent in query._mapper_entities:
-            if ent.corresponds_to(searchfor):
-                return ent
-        else:
-            if not conditional:
-                if not list(query._mapper_entities):
-                    raise sa_exc.ArgumentError(
-                        "Query has only expression-based entities - "
-                        "can't find property named '%s'."
-                         % (token, )
-                    )
-                else:
-                    raise sa_exc.ArgumentError(
-                        "Can't find property '%s' on any entity "
-                        "specified in this Query.  Note the full path "
-                        "from root (%s) to target entity must be specified."
-                        % (token, ",".join(str(x) for
-                            x in query._mapper_entities))
-                    )
-            else:
-                return None
-
-    def _find_entity_basestring(self, query, token, raiseerr):
-        for ent in query._mapper_entities:
-            # return only the first _MapperEntity when searching
-            # based on string prop name.   Ideally object
-            # attributes are used to specify more exactly.
-            return ent
-        else:
-            if raiseerr:
-                raise sa_exc.ArgumentError(
-                    "Query has only expression-based entities - "
-                    "can't find property named '%s'."
-                     % (token, )
-                )
-            else:
-                return None
 
 
 class LoaderStrategy(object):

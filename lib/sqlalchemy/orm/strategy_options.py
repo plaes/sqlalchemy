@@ -8,110 +8,343 @@
 
 """
 
-from .interfaces import MapperOption, _UnmaterializedLoad
+from .interfaces import MapperOption, PropComparator
 from .. import util
+from ..sql.base import _generative, Generative
+from .. import exc as sa_exc, inspect
+from .base import _is_aliased_class, _class_to_mapper
 
-def joinedload(*keys, **kw):
-    """Return a ``MapperOption`` that will convert the property of the given
-    name or series of mapped attributes into an joined eager load.
+class Load(Generative, MapperOption):
+    def __init__(self, entity):
+        insp = inspect(entity)
+        self.path = insp._path_registry
+        self.context = {}
 
-    .. versionchanged:: 0.6beta3
-        This function is known as :func:`eagerload` in all versions
-        of SQLAlchemy prior to version 0.6beta3, including the 0.5 and 0.4
-        series. :func:`eagerload` will remain available for the foreseeable
-        future in order to enable cross-compatibility.
+    strategy = None
+    propagate_to_loaders = False
 
-    Used with :meth:`~sqlalchemy.orm.query.Query.options`.
+    def process_query(self, query):
+        self._process(query, True)
 
-    examples::
+    def process_query_conditionally(self, query):
+        self._process(query, False)
 
-        # joined-load the "orders" collection on "User"
-        query(User).options(joinedload(User.orders))
+    def _process(self, query, raiseerr):
+        query._attributes.update(self.context)
 
-        # joined-load the "keywords" collection on each "Item",
-        # but not the "items" collection on "Order" - those
-        # remain lazily loaded.
-        query(Order).options(joinedload(Order.items, Item.keywords))
+    @util.dependencies("sqlalchemy.orm.util")
+    def _generate_path(self, orm_util, path, attr):
+        if isinstance(attr, util.string_types):
+            attr = path.entity.attrs[attr]
+            path = path[attr]
+        else:
+            prop = attr.property
+            if getattr(attr, '_of_type', None):
+                ac = attr._of_type
+                ext_info = inspect(ac)
 
-        # to joined-load across both, use joinedload_all()
-        query(Order).options(joinedload_all(Order.items, Item.keywords))
+                path_element = ext_info.mapper
+                if not ext_info.is_aliased_class:
+                    ac = orm_util.with_polymorphic(
+                                ext_info.mapper.base_mapper,
+                                ext_info.mapper, aliased=True,
+                                _use_mapper_path=True)
+                    path.entity_path[prop].set(self.context,
+                                        "path_with_polymorphic", inspect(ac))
+                path = path[prop][path_element]
+            else:
+                path = path[prop]
 
-        # set the default strategy to be 'joined'
-        query(Order).options(joinedload('*'))
+        if path.has_entity:
+            path = path.entity_path
+        return path
 
-    :func:`joinedload` also accepts a keyword argument `innerjoin=True` which
-    indicates using an inner join instead of an outer::
+    @_generative
+    def _set_strategy(self, attr, strategy):
+        self.path = self._generate_path(self.path, attr)
+        self.strategy = strategy
+        if strategy is not None:
+            self.path.parent.set(self.context, "loader", self)
 
-        query(Order).options(joinedload(Order.user, innerjoin=True))
+    @_generative
+    def _set_column_strategy(self, attrs, strategy):
+        for attr in attrs:
+            path = self._generate_path(self.path, attr)
+            cloned = self._generate()
+            cloned.strategy = strategy
+            cloned.path = path
+            path.set(self.context, "loader", cloned)
 
-    .. note::
+    def defer(self, *attrs):
+        return self._set_column_strategy(
+                    attrs,
+                    (("deferred", True), ("instrument", True))
+                )
 
-       The join created by :func:`joinedload` is anonymously aliased such that
-       it **does not affect the query results**.   An :meth:`.Query.order_by`
-       or :meth:`.Query.filter` call **cannot** reference these aliased
-       tables - so-called "user space" joins are constructed using
-       :meth:`.Query.join`.   The rationale for this is that
-       :func:`joinedload` is only applied in order to affect how related
-       objects or collections are loaded as an optimizing detail - it can be
-       added or removed with no impact on actual results.   See the section
-       :ref:`zen_of_eager_loading` for a detailed description of how this is
-       used, including how to use a single explicit JOIN for
-       filtering/ordering and eager loading simultaneously.
+    def default(self, attr):
+        return self._set_strategy(
+                    attr,
+                    None
+                )
 
-    See also:  :func:`subqueryload`, :func:`lazyload`
+    def joined(self, attr, innerjoin=None):
+        loader = self._set_strategy(
+                    attr,
+                    (("lazy", "joined"),)
+                )
+        if innerjoin is not None:
+            loader._set_options(eager_join_type=innerjoin)
+        return loader
 
-    """
+    def _set_options(self, **kw):
+        if self.path.has_entity:
+            target_path = self.path.parent
+        else:
+            target_path = self.path
+        for k, v in kw.items():
+            target_path.set(self.context, k, v)
 
-    opt = _UnmaterializedLoad()
+    @util.memoized_property
+    def strategy_impl(self):
+        if self.path.has_entity:
+            return self.path.parent.prop._get_strategy(self.strategy)
+        else:
+            return self.path.prop._get_strategy(self.strategy)
 
-    all_tokens = [token for key in keys for token in key.split(".")]
+class _UnboundLoad(Load):
+    def __init__(self):
+        self.path = ()
+        self._to_bind = set()
+        self.local_opts = {}
 
-    for token in all_tokens[0:-1]:
-        opt = opt.default(token)
-    opt = opt.joined(all_tokens[-1], **kw)
+    def _generate(self):
+        cloned = super(_UnboundLoad, self)._generate()
+        cloned.local_opts = {}
+        return cloned
 
-    return opt
+    def _set_options(self, **kw):
+        self.local_opts.update(kw)
+
+    def _process(self, query, raiseerr):
+        context = {}
+        for val in self._to_bind:
+            val._bind_loader(query, context, raiseerr)
+        query._attributes.update(context)
+
+    @classmethod
+    def _from_keys(self, meth, keys, chained, kw):
+        opt = _UnboundLoad()
+
+        all_tokens = [token for key in keys for token in key.split(".")]
+
+        for token in all_tokens[0:-1]:
+            if chained:
+                opt = meth(opt, token, **kw)
+            else:
+                opt = opt.default(token)
+        opt = meth(opt, all_tokens[-1], **kw)
+
+        return opt
 
 
-def joinedload_all(*keys, **kw):
-    """Return a ``MapperOption`` that will convert all properties along the
-    given dot-separated path or series of mapped attributes
-    into an joined eager load.
+    @_generative
+    def _set_strategy(self, attr, strategy):
+        self.path = self._generate_path(self.path, attr)
+        self.strategy = strategy
+        if strategy is not None:
+            self._to_bind.add(self)
 
-    .. versionchanged:: 0.6beta3
-        This function is known as :func:`eagerload_all` in all versions
-        of SQLAlchemy prior to version 0.6beta3, including the 0.5 and 0.4
-        series. :func:`eagerload_all` will remain available for the
-        foreseeable future in order to enable cross-compatibility.
+    @_generative
+    def _set_column_strategy(self, attrs, strategy):
+        for attr in attrs:
+            path = self._generate_path(self.path, attr)
+            cloned = self._generate()
+            cloned.strategy = strategy
+            cloned.path = path
+            self._to_bind.add(cloned)
 
-    Used with :meth:`~sqlalchemy.orm.query.Query.options`.
+    def _bind_loader(self, query, context, raiseerr):
+        start_path = self.path
+        # _current_path implies we're in a
+        # secondary load with an existing path
+        current_path = list(query._current_path.path)
+        if current_path:
+            start_path = self._chop_path(start_path, current_path)
 
-    For example::
+        token = start_path[0]
+        if isinstance(token, str):
+            entity = self._find_entity_basestring(query, token, raiseerr)
+        elif isinstance(token, PropComparator):
+            prop = token.property
+            entity = self._find_entity_prop_comparator(
+                                    query,
+                                    prop.key,
+                                    token._parententity,
+                                    raiseerr)
 
-        query.options(joinedload_all('orders.items.keywords'))...
+        else:
+            raise sa_exc.ArgumentError(
+                    "mapper option expects "
+                    "string key or list of attributes")
 
-    will set all of ``orders``, ``orders.items``, and
-    ``orders.items.keywords`` to load in one joined eager load.
+        path_element = entity.entity_zero
 
-    Individual descriptors are accepted as arguments as well::
+        # transfer our entity-less state into a Load() object
+        # with a real entity path.
+        loader = Load(path_element)
+        loader.context = context
+        loader.strategy = self.strategy
+        for token in start_path:
+            loader.path = loader._generate_path(loader.path, token)
+        if loader.path.has_entity:
+            loader.path.parent.set(context, "loader", loader)
+        else:
+            loader.path.set(context, "loader", loader)
+        if self.local_opts:
+            loader._set_options(**self.local_opts)
 
-        query.options(joinedload_all(User.orders, Order.items, Item.keywords))
+    def _generate_path(self, path, attr):
+        return path + (attr, )
 
-    The keyword arguments accept a flag `innerjoin=True|False` which will
-    override the value of the `innerjoin` flag specified on the
-    relationship().
+    def _chop_path(to_chop, path):
+        i = -1
+        for i, (c_token, (p_mapper, p_prop)) in enumerate(zip(to_chop, path.pairs())):
+            if c_token.property is not p_prop.property:
+                break
+        else:
+            i += 1
+        return to_chop[i:]
 
-    See also:  :func:`subqueryload_all`, :func:`lazyload`
+    def _find_entity_prop_comparator(self, query, token, mapper, conditional):
+        if _is_aliased_class(mapper):
+            searchfor = mapper
+        else:
+            searchfor = _class_to_mapper(mapper)
+        for ent in query._mapper_entities:
+            if ent.corresponds_to(searchfor):
+                return ent
+        else:
+            if not conditional:
+                if not list(query._mapper_entities):
+                    raise sa_exc.ArgumentError(
+                        "Query has only expression-based entities - "
+                        "can't find property named '%s'."
+                         % (token, )
+                    )
+                else:
+                    raise sa_exc.ArgumentError(
+                        "Can't find property '%s' on any entity "
+                        "specified in this Query.  Note the full path "
+                        "from root (%s) to target entity must be specified."
+                        % (token, ",".join(str(x) for
+                            x in query._mapper_entities))
+                    )
+            else:
+                return None
 
-    """
-    innerjoin = kw.pop('innerjoin', None)
-    if innerjoin is not None:
-        return (
-            _strategies.EagerLazyOption(keys, lazy='joined', chained=True),
-            _strategies.EagerJoinOption(keys, innerjoin, chained=True)
-        )
-    else:
-        return _strategies.EagerLazyOption(keys, lazy='joined', chained=True)
+    def _find_entity_basestring(self, query, token, raiseerr):
+        for ent in query._mapper_entities:
+            # return only the first _MapperEntity when searching
+            # based on string prop name.   Ideally object
+            # attributes are used to specify more exactly.
+            return ent
+        else:
+            if raiseerr:
+                raise sa_exc.ArgumentError(
+                    "Query has only expression-based entities - "
+                    "can't find property named '%s'."
+                     % (token, )
+                )
+            else:
+                return None
+
+    @classmethod
+    def _joinedload(cls, *keys, **kw):
+        """Return a ``MapperOption`` that will convert the property of the given
+        name or series of mapped attributes into an joined eager load.
+
+        .. versionchanged:: 0.6beta3
+            This function is known as :func:`eagerload` in all versions
+            of SQLAlchemy prior to version 0.6beta3, including the 0.5 and 0.4
+            series. :func:`eagerload` will remain available for the foreseeable
+            future in order to enable cross-compatibility.
+
+        Used with :meth:`~sqlalchemy.orm.query.Query.options`.
+
+        examples::
+
+            # joined-load the "orders" collection on "User"
+            query(User).options(joinedload(User.orders))
+
+            # joined-load the "keywords" collection on each "Item",
+            # but not the "items" collection on "Order" - those
+            # remain lazily loaded.
+            query(Order).options(joinedload(Order.items, Item.keywords))
+
+            # to joined-load across both, use joinedload_all()
+            query(Order).options(joinedload_all(Order.items, Item.keywords))
+
+            # set the default strategy to be 'joined'
+            query(Order).options(joinedload('*'))
+
+        :func:`joinedload` also accepts a keyword argument `innerjoin=True` which
+        indicates using an inner join instead of an outer::
+
+            query(Order).options(joinedload(Order.user, innerjoin=True))
+
+        .. note::
+
+           The join created by :func:`joinedload` is anonymously aliased such that
+           it **does not affect the query results**.   An :meth:`.Query.order_by`
+           or :meth:`.Query.filter` call **cannot** reference these aliased
+           tables - so-called "user space" joins are constructed using
+           :meth:`.Query.join`.   The rationale for this is that
+           :func:`joinedload` is only applied in order to affect how related
+           objects or collections are loaded as an optimizing detail - it can be
+           added or removed with no impact on actual results.   See the section
+           :ref:`zen_of_eager_loading` for a detailed description of how this is
+           used, including how to use a single explicit JOIN for
+           filtering/ordering and eager loading simultaneously.
+
+        See also:  :func:`subqueryload`, :func:`lazyload`
+
+        """
+        return cls._from_keys(cls.joined, keys, False, kw)
+
+    @classmethod
+    def _joinedload_all(cls, *keys, **kw):
+        """Return a ``MapperOption`` that will convert all properties along the
+        given dot-separated path or series of mapped attributes
+        into an joined eager load.
+
+        .. versionchanged:: 0.6beta3
+            This function is known as :func:`eagerload_all` in all versions
+            of SQLAlchemy prior to version 0.6beta3, including the 0.5 and 0.4
+            series. :func:`eagerload_all` will remain available for the
+            foreseeable future in order to enable cross-compatibility.
+
+        Used with :meth:`~sqlalchemy.orm.query.Query.options`.
+
+        For example::
+
+            query.options(joinedload_all('orders.items.keywords'))...
+
+        will set all of ``orders``, ``orders.items``, and
+        ``orders.items.keywords`` to load in one joined eager load.
+
+        Individual descriptors are accepted as arguments as well::
+
+            query.options(joinedload_all(User.orders, Order.items, Item.keywords))
+
+        The keyword arguments accept a flag `innerjoin=True|False` which will
+        override the value of the `innerjoin` flag specified on the
+        relationship().
+
+        See also:  :func:`subqueryload_all`, :func:`lazyload`
+
+        """
+        return cls._from_keys(cls.joined, keys, True, kw)
+
 
 
 def eagerload(*args, **kwargs):
