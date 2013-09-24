@@ -33,9 +33,20 @@ class Load(Generative, MapperOption):
         query._attributes.update(self.context)
 
     @util.dependencies("sqlalchemy.orm.util")
-    def _generate_path(self, orm_util, path, attr):
+    def _generate_path(self, orm_util, path, attr, raiseerr=True):
         if isinstance(attr, util.string_types):
-            attr = path.entity.attrs[attr]
+            try:
+                attr = path.entity.attrs[attr]
+            except KeyError:
+                if raiseerr:
+                    raise sa_exc.ArgumentError(
+                        "Can't find property named '%s' on the "
+                        "mapped entity %s in this Query. " % (
+                            attr, path.entity)
+                    )
+                else:
+                    return None
+
             path = path[attr]
         else:
             prop = attr.property
@@ -135,7 +146,12 @@ class _UnboundLoad(Load):
     def _from_keys(self, meth, keys, chained, kw):
         opt = _UnboundLoad()
 
-        all_tokens = [token for key in keys for token in key.split(".")]
+        def _split_key(key):
+            if isinstance(key, util.string_types):
+                return key.split(".")
+            else:
+                return (key,)
+        all_tokens = [token for key in keys for token in _split_key(key)]
 
         for token in all_tokens[0:-1]:
             if chained:
@@ -167,12 +183,14 @@ class _UnboundLoad(Load):
         start_path = self.path
         # _current_path implies we're in a
         # secondary load with an existing path
-        current_path = list(query._current_path.path)
+        current_path = query._current_path
         if current_path:
             start_path = self._chop_path(start_path, current_path)
+        if not start_path:
+            return None
 
         token = start_path[0]
-        if isinstance(token, str):
+        if isinstance(token, util.string_types):
             entity = self._find_entity_basestring(query, token, raiseerr)
         elif isinstance(token, PropComparator):
             prop = token.property
@@ -187,6 +205,9 @@ class _UnboundLoad(Load):
                     "mapper option expects "
                     "string key or list of attributes")
 
+        if entity is None:
+            return None
+
         path_element = entity.entity_zero
 
         # transfer our entity-less state into a Load() object
@@ -195,7 +216,10 @@ class _UnboundLoad(Load):
         loader.context = context
         loader.strategy = self.strategy
         for token in start_path:
-            loader.path = loader._generate_path(loader.path, token)
+            loader.path = path = loader._generate_path(loader.path, token, raiseerr)
+            if path is None:
+                return
+
         if loader.path.has_entity:
             loader.path.parent.set(context, "loader", loader)
         else:
@@ -206,16 +230,22 @@ class _UnboundLoad(Load):
     def _generate_path(self, path, attr):
         return path + (attr, )
 
-    def _chop_path(to_chop, path):
+    def _chop_path(self, to_chop, path):
         i = -1
         for i, (c_token, (p_mapper, p_prop)) in enumerate(zip(to_chop, path.pairs())):
-            if c_token.property is not p_prop.property:
-                break
+
+            if isinstance(c_token, util.string_types):
+                if c_token != p_prop.key:
+                    return None
+            elif isinstance(c_token, PropComparator):
+                if c_token.property is not p_prop:
+                    return None
         else:
             i += 1
+
         return to_chop[i:]
 
-    def _find_entity_prop_comparator(self, query, token, mapper, conditional):
+    def _find_entity_prop_comparator(self, query, token, mapper, raiseerr):
         if _is_aliased_class(mapper):
             searchfor = mapper
         else:
@@ -224,7 +254,7 @@ class _UnboundLoad(Load):
             if ent.corresponds_to(searchfor):
                 return ent
         else:
-            if not conditional:
+            if raiseerr:
                 if not list(query._mapper_entities):
                     raise sa_exc.ArgumentError(
                         "Query has only expression-based entities - "
