@@ -5,16 +5,10 @@
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
 
 """
-Superseded loader strategy options.
-
-The query options here were for many years the standard construct
-passed to Query.options() to control loading.   The system as of 0.9
-has been replaced by the much simpler ``load()`` construct; the
-options here now reinterpret themselves in terms of the new system.
 
 """
 
-from .interfaces import MapperOption
+from .interfaces import MapperOption, _UnmaterializedLoad
 from .. import util
 
 def joinedload(*keys, **kw):
@@ -67,14 +61,16 @@ def joinedload(*keys, **kw):
     See also:  :func:`subqueryload`, :func:`lazyload`
 
     """
-    innerjoin = kw.pop('innerjoin', None)
-    if innerjoin is not None:
-        return (
-             _strategies.EagerLazyOption(keys, lazy='joined'),
-             _strategies.EagerJoinOption(keys, innerjoin)
-         )
-    else:
-        return _strategies.EagerLazyOption(keys, lazy='joined')
+
+    opt = _UnmaterializedLoad()
+
+    all_tokens = [token for key in keys for token in key.split(".")]
+
+    for token in all_tokens[0:-1]:
+        opt = opt.default(token)
+    opt = opt.joined(all_tokens[-1], **kw)
+
+    return opt
 
 
 def joinedload_all(*keys, **kw):

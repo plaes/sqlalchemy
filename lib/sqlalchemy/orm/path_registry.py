@@ -167,11 +167,11 @@ class PropRegistry(PathRegistry):
         self.parent = parent
         self.path = parent.path + (prop,)
 
-    @property
+    @util.memoized_property
     def has_entity(self):
         return hasattr(self.prop, "mapper")
 
-    @property
+    @util.memoized_property
     def entity(self):
         return self.prop.mapper
 
@@ -198,10 +198,7 @@ class EntityRegistry(PathRegistry, dict):
         self.is_aliased_class = entity.is_aliased_class
         self.entity = entity
         self.path = parent.path + (entity,)
-
-    @property
-    def entity_path(self):
-        return self
+        self.entity_path = self
 
     def __bool__(self):
         return True

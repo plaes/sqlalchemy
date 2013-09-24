@@ -583,11 +583,22 @@ class Load(Generative, MapperOption):
                     (("deferred", True), ("instrument", True))
                 )
 
-    def joined(self, attr):
-        return self._set_strategy(
+    def joined(self, attr, innerjoin=None):
+        loader = self._set_strategy(
                     attr,
                     (("lazy", "joined"),)
                 )
+        if innerjoin is not None:
+            loader._set_options(eager_join_type=innerjoin)
+        return loader
+
+    def _set_options(self, **kw):
+        if self.path.has_entity:
+            target_path = self.path.parent
+        else:
+            target_path = self.path
+        for k, v in kw.items():
+            target_path.set(self.context, k, v)
 
     @util.memoized_property
     def strategy_impl(self):
@@ -600,6 +611,15 @@ class _UnmaterializedLoad(Load):
     def __init__(self):
         self.path = ()
         self._unmaterialized = set()
+        self.local_opts = {}
+
+    def _generate(self):
+        cloned = super(_UnmaterializedLoad, self)._generate()
+        cloned.local_opts = {}
+        return cloned
+
+    def _set_options(self, **kw):
+        self.local_opts.update(kw)
 
     def _process(self, query, raiseerr):
         context = {}
@@ -659,6 +679,8 @@ class _UnmaterializedLoad(Load):
             loader.path.parent.set(context, "loader", loader)
         else:
             loader.path.set(context, "loader", loader)
+        if self.local_opts:
+            loader._set_options(**self.local_opts)
 
     def _generate_path(self, path, attr):
         return path + (attr, )
