@@ -149,27 +149,6 @@ class TokenRegistry(PathRegistry):
     def __getitem__(self, entity):
         raise NotImplementedError()
 
-class GenericRegistry(PathRegistry):
-    def __init__(self, token, parent=None, root=None):
-        self.token = token
-        self.parent = parent
-        self.root = root if root is not None else self
-        self._reg = {}
-        if parent is not None:
-            self.path = parent.path + (token,)
-        else:
-            self.path = (token,)
-
-    def __getitem__(self, token):
-        if token in self._reg:
-            return self._reg[token]
-        else:
-            self._reg[token] = reg = GenericRegistry(token, self, self.root)
-            return reg
-
-    def __repr__(self):
-        return "GenericRegistry(%r)" % self.token
-
 
 class PropRegistry(PathRegistry):
     def __init__(self, parent, prop):
