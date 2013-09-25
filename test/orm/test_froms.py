@@ -902,6 +902,11 @@ class InstancesTest(QueryTest, AssertsCompiledSQL):
                     order_by(users.c.id, oalias.c.id, ialias.c.id)
 
         # test using Alias with more than one level deep
+
+        # new way:
+        #from sqlalchemy.orm.strategy_options import Load
+        #opt = Load(User).contains_eager('orders', alias=oalias).contains_eager('items', alias=ialias)
+
         def go():
             l = list(q.options(
                     contains_eager('orders', alias=oalias),
