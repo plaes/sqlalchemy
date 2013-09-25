@@ -56,6 +56,11 @@ class Load(Generative, MapperOption):
             path = path[attr]
         else:
             prop = attr.property
+
+            if raiseerr and not prop.parent.common_parent(path.entity):
+                raise sa_exc.ArgumentError("Attribute '%s' does not "
+                            "link from element '%s'" % (attr, path.entity))
+
             if getattr(attr, '_of_type', None):
                 ac = attr._of_type
                 ext_info = inspect(ac)
@@ -229,7 +234,17 @@ class _UnboundLoad(Load):
         loader = Load(path_element)
         loader.context = context
         loader.strategy = self.strategy
+
+        path = loader.path
+        prev_token = None
         for token in start_path:
+            if prev_token and not path.has_entity:
+                raise sa_exc.ArgumentError(
+                    "Attribute '%s' of entity '%s' does not "
+                    "refer to a mapped entity" %
+                    (prev_token, path.parent.entity)
+                )
+            prev_token = token
             loader.path = path = loader._generate_path(loader.path, token, raiseerr)
             if path is None:
                 return
@@ -435,6 +450,50 @@ class _UnboundLoad(Load):
         """
         return cls._from_keys(cls.contains_eager, keys, True, kw)
 
+    @classmethod
+    def _defer(cls, *key):
+        """Return a :class:`.MapperOption` that will convert the column property
+        of the given name into a deferred load.
+
+        Used with :meth:`.Query.options`.
+
+        e.g.::
+
+            from sqlalchemy.orm import defer
+
+            query(MyClass).options(defer("attribute_one"),
+                                defer("attribute_two"))
+
+        A class bound descriptor is also accepted::
+
+            query(MyClass).options(
+                                defer(MyClass.attribute_one),
+                                defer(MyClass.attribute_two))
+
+        A "path" can be specified onto a related or collection object using a
+        dotted name. The :func:`.orm.defer` option will be applied to that object
+        when loaded::
+
+            query(MyClass).options(
+                                defer("related.attribute_one"),
+                                defer("related.attribute_two"))
+
+        To specify a path via class, send multiple arguments::
+
+            query(MyClass).options(
+                                defer(MyClass.related, MyOtherClass.attribute_one),
+                                defer(MyClass.related, MyOtherClass.attribute_two))
+
+        See also:
+
+        :ref:`deferred`
+
+        :param \*key: A key representing an individual path.   Multiple entries
+         are accepted to allow a multiple-token path for a single target, not
+         multiple targets.
+
+        """
+        return cls._from_keys(cls.defer, key, False, {})
 
 
 def eagerload(*args, **kwargs):
@@ -566,49 +625,6 @@ def immediateload(*keys):
 
 
 
-def defer(*key):
-    """Return a :class:`.MapperOption` that will convert the column property
-    of the given name into a deferred load.
-
-    Used with :meth:`.Query.options`.
-
-    e.g.::
-
-        from sqlalchemy.orm import defer
-
-        query(MyClass).options(defer("attribute_one"),
-                            defer("attribute_two"))
-
-    A class bound descriptor is also accepted::
-
-        query(MyClass).options(
-                            defer(MyClass.attribute_one),
-                            defer(MyClass.attribute_two))
-
-    A "path" can be specified onto a related or collection object using a
-    dotted name. The :func:`.orm.defer` option will be applied to that object
-    when loaded::
-
-        query(MyClass).options(
-                            defer("related.attribute_one"),
-                            defer("related.attribute_two"))
-
-    To specify a path via class, send multiple arguments::
-
-        query(MyClass).options(
-                            defer(MyClass.related, MyOtherClass.attribute_one),
-                            defer(MyClass.related, MyOtherClass.attribute_two))
-
-    See also:
-
-    :ref:`deferred`
-
-    :param \*key: A key representing an individual path.   Multiple entries
-     are accepted to allow a multiple-token path for a single target, not
-     multiple targets.
-
-    """
-    return _strategies.DeferredOption(key, defer=True)
 
 
 def undefer(*key):

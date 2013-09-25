@@ -187,7 +187,6 @@ class PropRegistry(PathRegistry):
                 self, entity
             )
 
-
 class EntityRegistry(PathRegistry, dict):
     is_aliased_class = False
     has_entity = True

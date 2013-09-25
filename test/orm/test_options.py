@@ -559,6 +559,16 @@ class OptionsNoPropTest(_fixtures.FixtureTest):
             "from element 'Mapper|Address|addresses'"
         )
 
+    def test_non_contiguous_all_option_of_type(self):
+        User = self.classes.User
+        Order = self.classes.Order
+        self._assert_eager_with_entity_exception(
+            [User],
+            (joinedload_all(User.addresses, User.orders.of_type(Order)), ),
+            r"Attribute 'User.orders' does not link "
+            "from element 'Mapper|Address|addresses'"
+        )
+
     @classmethod
     def setup_mappers(cls):
         users, User, addresses, Address, orders, Order = (
@@ -588,7 +598,7 @@ class OptionsNoPropTest(_fixtures.FixtureTest):
 
         q = create_session().query(*entity_list).\
                             options(joinedload(option))
-        key = ('loaderstrategy', (inspect(Item), inspect(Item).attrs.keywords))
+        key = ('loader', (inspect(Item), inspect(Item).attrs.keywords))
         assert key in q._attributes
 
     def _assert_eager_with_entity_exception(self, entity_list, options,

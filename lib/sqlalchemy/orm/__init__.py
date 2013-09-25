@@ -218,9 +218,10 @@ from .strategy_options import _UnboundLoad
 joinedload = public_factory(_UnboundLoad._joinedload, ".orm.joinedload")
 joinedload_all = public_factory(_UnboundLoad._joinedload_all, ".orm.joinedload_all")
 contains_eager = public_factory(_UnboundLoad._contains_eager, ".orm.contains_eager")
+defer = public_factory(_UnboundLoad._defer, ".orm.defer")
 
 from .strategy_options import subqueryload, \
-    subqueryload_all, eagerload, eagerload_all, defer, undefer, undefer_group,\
+    subqueryload_all, eagerload, eagerload_all, undefer, undefer_group,\
     lazyload, lazyload_all, immediateload, noload
 
 
