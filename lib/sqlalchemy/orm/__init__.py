@@ -217,10 +217,11 @@ from .strategy_options import _UnboundLoad
 
 joinedload = public_factory(_UnboundLoad._joinedload, ".orm.joinedload")
 joinedload_all = public_factory(_UnboundLoad._joinedload_all, ".orm.joinedload_all")
+contains_eager = public_factory(_UnboundLoad._contains_eager, ".orm.contains_eager")
 
 from .strategy_options import subqueryload, \
     subqueryload_all, eagerload, eagerload_all, defer, undefer, undefer_group,\
-    contains_eager, lazyload, lazyload_all, immediateload, noload
+    lazyload, lazyload_all, immediateload, noload
 
 
 contains_alias = public_factory(AliasOption, ".orm.contains_alias")

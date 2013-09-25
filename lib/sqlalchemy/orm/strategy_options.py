@@ -13,15 +13,27 @@ from .. import util
 from ..sql.base import _generative, Generative
 from .. import exc as sa_exc, inspect
 from .base import _is_aliased_class, _class_to_mapper
+from ..sql import util as sql_util
+from . import util as orm_util
 
 class Load(Generative, MapperOption):
     def __init__(self, entity):
         insp = inspect(entity)
         self.path = insp._path_registry
         self.context = {}
+        self.local_opts = {}
+
+    def _generate(self):
+        cloned = super(Load, self)._generate()
+        cloned.local_opts = {}
+        return cloned
 
     strategy = None
     propagate_to_loaders = False
+
+    @util.memoized_property
+    def _is_chain_link(self):
+        return "chain" in self.local_opts
 
     def process_query(self, query):
         self._process(query, True)
@@ -30,7 +42,15 @@ class Load(Generative, MapperOption):
         self._process(query, False)
 
     def _process(self, query, raiseerr):
-        query._attributes.update(self.context)
+        Load._transfer_to_query(self.context, query)
+
+    @classmethod
+    def _transfer_to_query(cls, context, query):
+        for key, loader in context.items():
+            if loader._is_chain_link:
+                query._attributes.setdefault(key, loader)
+            else:
+                query._attributes[key] = loader
 
     @util.dependencies("sqlalchemy.orm.util")
     def _generate_path(self, orm_util, path, attr, raiseerr=True):
@@ -104,16 +124,22 @@ class Load(Generative, MapperOption):
                     (("lazy", "joined"),)
                 )
         if innerjoin is not None:
-            loader._set_options(eager_join_type=innerjoin)
+            loader.local_opts['innerjoin'] = innerjoin
         return loader
 
-    def _set_options(self, **kw):
-        if self.path.has_entity:
-            target_path = self.path.parent
-        else:
-            target_path = self.path
-        for k, v in kw.items():
-            target_path.set(self.context, k, v)
+    def contains_eager(self, attr, alias=None):
+        if alias is not None:
+            if not isinstance(alias, str):
+                info = inspect(alias)
+                alias = info.selectable
+
+        loader = self._set_strategy(
+                    attr,
+                    (("lazy", "joined"),)
+                )
+        loader.local_opts['eager_from_alias'] = alias
+        return loader
+
 
     @util.memoized_property
     def strategy_impl(self):
@@ -128,19 +154,11 @@ class _UnboundLoad(Load):
         self._to_bind = set()
         self.local_opts = {}
 
-    def _generate(self):
-        cloned = super(_UnboundLoad, self)._generate()
-        cloned.local_opts = {}
-        return cloned
-
-    def _set_options(self, **kw):
-        self.local_opts.update(kw)
-
     def _process(self, query, raiseerr):
         context = {}
         for val in self._to_bind:
             val._bind_loader(query, context, raiseerr)
-        query._attributes.update(context)
+        Load._transfer_to_query(context, query)
 
     @classmethod
     def _from_keys(self, meth, keys, chained, kw):
@@ -158,6 +176,8 @@ class _UnboundLoad(Load):
                 opt = meth(opt, token, **kw)
             else:
                 opt = opt.default(token)
+            opt.local_opts['chain'] = True
+
         opt = meth(opt, all_tokens[-1], **kw)
 
         return opt
@@ -220,12 +240,12 @@ class _UnboundLoad(Load):
             if path is None:
                 return
 
+        loader.local_opts.update(self.local_opts)
         if loader.path.has_entity:
             loader.path.parent.set(context, "loader", loader)
         else:
             loader.path.set(context, "loader", loader)
-        if self.local_opts:
-            loader._set_options(**self.local_opts)
+
 
     def _generate_path(self, path, attr):
         return path + (attr, )
@@ -375,6 +395,44 @@ class _UnboundLoad(Load):
         """
         return cls._from_keys(cls.joined, keys, True, kw)
 
+    @classmethod
+    def _contains_eager(cls, *keys, **kw):
+        """Return a ``MapperOption`` that will indicate to the query that
+        the given attribute should be eagerly loaded from columns currently
+        in the query.
+
+        Used with :meth:`~sqlalchemy.orm.query.Query.options`.
+
+        The option is used in conjunction with an explicit join that loads
+        the desired rows, i.e.::
+
+            sess.query(Order).\\
+                    join(Order.user).\\
+                    options(contains_eager(Order.user))
+
+        The above query would join from the ``Order`` entity to its related
+        ``User`` entity, and the returned ``Order`` objects would have the
+        ``Order.user`` attribute pre-populated.
+
+        :func:`contains_eager` also accepts an `alias` argument, which is the
+        string name of an alias, an :func:`~sqlalchemy.sql.expression.alias`
+        construct, or an :func:`~sqlalchemy.orm.aliased` construct. Use this when
+        the eagerly-loaded rows are to come from an aliased table::
+
+            user_alias = aliased(User)
+            sess.query(Order).\\
+                    join((user_alias, Order.user)).\\
+                    options(contains_eager(Order.user, alias=user_alias))
+
+        See also :func:`eagerload` for the "automatic" version of this
+        functionality.
+
+        For additional examples of :func:`contains_eager` see
+        :ref:`contains_eager`.
+
+        """
+        return cls._from_keys(cls.contains_eager, keys, True, kw)
+
 
 
 def eagerload(*args, **kwargs):
@@ -504,48 +562,6 @@ def immediateload(*keys):
     return _strategies.EagerLazyOption(keys, lazy='immediate')
 
 
-def contains_eager(*keys, **kwargs):
-    """Return a ``MapperOption`` that will indicate to the query that
-    the given attribute should be eagerly loaded from columns currently
-    in the query.
-
-    Used with :meth:`~sqlalchemy.orm.query.Query.options`.
-
-    The option is used in conjunction with an explicit join that loads
-    the desired rows, i.e.::
-
-        sess.query(Order).\\
-                join(Order.user).\\
-                options(contains_eager(Order.user))
-
-    The above query would join from the ``Order`` entity to its related
-    ``User`` entity, and the returned ``Order`` objects would have the
-    ``Order.user`` attribute pre-populated.
-
-    :func:`contains_eager` also accepts an `alias` argument, which is the
-    string name of an alias, an :func:`~sqlalchemy.sql.expression.alias`
-    construct, or an :func:`~sqlalchemy.orm.aliased` construct. Use this when
-    the eagerly-loaded rows are to come from an aliased table::
-
-        user_alias = aliased(User)
-        sess.query(Order).\\
-                join((user_alias, Order.user)).\\
-                options(contains_eager(Order.user, alias=user_alias))
-
-    See also :func:`eagerload` for the "automatic" version of this
-    functionality.
-
-    For additional examples of :func:`contains_eager` see
-    :ref:`contains_eager`.
-
-    """
-    alias = kwargs.pop('alias', None)
-    if kwargs:
-        raise exc.ArgumentError(
-                'Invalid kwargs for contains_eager: %r' % list(kwargs.keys()))
-    return _strategies.EagerLazyOption(keys, lazy='joined',
-            propagate_to_loaders=False, chained=True), \
-        _strategies.LoadEagerFromAliasOption(keys, alias=alias, chained=True)
 
 
 def defer(*key):
@@ -962,46 +978,4 @@ class EagerJoinOption(PropertyOption):
         else:
             paths[-1].set(query._attributes, "eager_join_type", self.innerjoin)
 
-
-class LoadEagerFromAliasOption(PropertyOption):
-
-    def __init__(self, key, alias=None, chained=False):
-        super(LoadEagerFromAliasOption, self).__init__(key)
-        if alias is not None:
-            if not isinstance(alias, str):
-                info = inspect(alias)
-                alias = info.selectable
-        self.alias = alias
-        self.chained = chained
-
-    def process_query_property(self, query, paths):
-        if self.chained:
-            for path in paths[0:-1]:
-                (root_mapper, prop) = path.path[-2:]
-                adapter = query._polymorphic_adapters.get(prop.mapper, None)
-                path.setdefault(query._attributes,
-                            "user_defined_eager_row_processor",
-                            adapter)
-
-        root_mapper, prop = paths[-1].path[-2:]
-        if self.alias is not None:
-            if isinstance(self.alias, str):
-                self.alias = prop.target.alias(self.alias)
-            paths[-1].set(query._attributes,
-                    "user_defined_eager_row_processor",
-                    sql_util.ColumnAdapter(self.alias,
-                                equivalents=prop.mapper._equivalent_columns)
-            )
-        else:
-            if paths[-1].contains(query._attributes, "path_with_polymorphic"):
-                with_poly_info = paths[-1].get(query._attributes,
-                                                "path_with_polymorphic")
-                adapter = orm_util.ORMAdapter(
-                            with_poly_info.entity,
-                            equivalents=prop.mapper._equivalent_columns)
-            else:
-                adapter = query._polymorphic_adapters.get(prop.mapper, None)
-            paths[-1].set(query._attributes,
-                                "user_defined_eager_row_processor",
-                                adapter)
 

@@ -427,7 +427,7 @@ class StrategizedProperty(MapperProperty):
         else:
             return None
 
-    def _get_context_strategy(self, context, path):
+    def _get_context_loader(self, context, path):
         load = path._inlined_get_for(self, context, 'loader')
 
         #if not strategy_cls:
@@ -435,10 +435,7 @@ class StrategizedProperty(MapperProperty):
         #   if wc_key and wc_key in context.attributes:
         #        strategy_cls = context.attributes[wc_key]
 
-        if load:
-            return load.strategy_impl
-        else:
-            return self.strategy
+        return load
 
     def _get_strategy(self, key):
         try:
@@ -453,13 +450,20 @@ class StrategizedProperty(MapperProperty):
         return self._get_strategy(cls._strategy_keys[0])
 
     def setup(self, context, entity, path, adapter, **kwargs):
-        self._get_context_strategy(context, path).\
-                    setup_query(context, entity, path,
-                                    adapter, **kwargs)
+        loader = self._get_context_loader(context, path)
+        if loader:
+            strat = loader.strategy_impl
+        else:
+            strat = self.strategy
+        strat.setup_query(context, entity, path, loader, adapter, **kwargs)
 
     def create_row_processor(self, context, path, mapper, row, adapter):
-        return self._get_context_strategy(context, path).\
-                    create_row_processor(context, path,
+        loader = self._get_context_loader(context, path)
+        if loader:
+            strat = loader.strategy_impl
+        else:
+            strat = self.strategy
+        return strat.create_row_processor(context, path, loader,
                                     mapper, row, adapter)
 
     def do_init(self):
@@ -553,10 +557,10 @@ class LoaderStrategy(object):
     def init_class_attribute(self, mapper):
         pass
 
-    def setup_query(self, context, entity, path, adapter, **kwargs):
+    def setup_query(self, context, entity, path, loadopt, adapter, **kwargs):
         pass
 
-    def create_row_processor(self, context, path, mapper,
+    def create_row_processor(self, context, path, loadopt, mapper,
                                 row, adapter):
         """Return row processing functions which fulfill the contract
         specified by MapperProperty.create_row_processor.
