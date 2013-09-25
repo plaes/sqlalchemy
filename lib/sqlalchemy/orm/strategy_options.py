@@ -40,6 +40,13 @@ class Load(Generative, MapperOption):
 
     @util.dependencies("sqlalchemy.orm.util")
     def _generate_path(self, orm_util, path, attr, raiseerr=True):
+        if raiseerr and not path.has_entity:
+            raise sa_exc.ArgumentError(
+                "Attribute '%s' of entity '%s' does not "
+                "refer to a mapped entity" %
+                (path.prop.key, path.parent.entity)
+            )
+
         if isinstance(attr, util.string_types):
             try:
                 attr = path.entity.attrs[attr]
@@ -236,15 +243,7 @@ class _UnboundLoad(Load):
         loader.strategy = self.strategy
 
         path = loader.path
-        prev_token = None
         for token in start_path:
-            if prev_token and not path.has_entity:
-                raise sa_exc.ArgumentError(
-                    "Attribute '%s' of entity '%s' does not "
-                    "refer to a mapped entity" %
-                    (prev_token, path.parent.entity)
-                )
-            prev_token = token
             loader.path = path = loader._generate_path(loader.path, token, raiseerr)
             if path is None:
                 return

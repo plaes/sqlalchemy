@@ -517,7 +517,7 @@ class OptionsNoPropTest(_fixtures.FixtureTest):
         self._assert_eager_with_entity_exception(
             [Keyword, Item],
             (joinedload_all(Keyword.id, Item.keywords), ),
-            r"Attribute 'Keyword.id' of entity 'Mapper\|Keyword\|keywords' "
+            r"Attribute 'id' of entity 'Mapper\|Keyword\|keywords' "
             "does not refer to a mapped entity"
         )
 
@@ -527,7 +527,7 @@ class OptionsNoPropTest(_fixtures.FixtureTest):
         self._assert_eager_with_entity_exception(
             [Keyword, Item],
             (joinedload_all(Keyword.keywords, Item.keywords), ),
-            r"Attribute 'Keyword.keywords' of entity 'Mapper\|Keyword\|keywords' "
+            r"Attribute 'keywords' of entity 'Mapper\|Keyword\|keywords' "
             "does not refer to a mapped entity"
         )
 
