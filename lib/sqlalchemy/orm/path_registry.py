@@ -176,6 +176,10 @@ class PropRegistry(PathRegistry):
         return self.prop.mapper
 
     @property
+    def mapper(self):
+        return self.entity
+
+    @property
     def entity_path(self):
         return self[self.entity]
 
@@ -198,6 +202,10 @@ class EntityRegistry(PathRegistry, dict):
         self.entity = entity
         self.path = parent.path + (entity,)
         self.entity_path = self
+
+    @property
+    def mapper(self):
+        return inspection.inspect(self.entity).mapper
 
     def __bool__(self):
         return True

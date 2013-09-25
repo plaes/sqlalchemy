@@ -991,10 +991,8 @@ class JoinedLoader(AbstractRelationshipLoader):
 
         with_polymorphic = None
 
-        if loadopt is not None:
-            user_defined_adapter = self._init_user_defined_eager_proc(loadopt, context)
-        else:
-            user_defined_adapter = False
+        user_defined_adapter = self._init_user_defined_eager_proc(
+                                        loadopt, context) if loadopt else False
 
         if user_defined_adapter is not False:
             clauses, adapter, add_to_collection = \
@@ -1252,7 +1250,9 @@ class JoinedLoader(AbstractRelationshipLoader):
                                 )
 
     def _create_eager_adapter(self, context, row, adapter, path, loadopt):
-        user_defined_adapter = self._init_user_defined_eager_proc(loadopt, context)
+        user_defined_adapter = self._init_user_defined_eager_proc(
+                                        loadopt, context) if loadopt else False
+
         if user_defined_adapter is not False:
             decorator = user_defined_adapter
             # user defined eagerloads are part of the "primary"

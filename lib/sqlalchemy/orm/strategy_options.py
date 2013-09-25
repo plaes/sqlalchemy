@@ -64,7 +64,7 @@ class Load(Generative, MapperOption):
         else:
             prop = attr.property
 
-            if raiseerr and not prop.parent.common_parent(path.entity):
+            if raiseerr and not prop.parent.common_parent(path.mapper):
                 raise sa_exc.ArgumentError("Attribute '%s' does not "
                             "link from element '%s'" % (attr, path.entity))
 
