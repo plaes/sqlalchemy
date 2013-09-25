@@ -13,6 +13,7 @@ from .. import util
 from ..sql.base import _generative, Generative
 from .. import exc as sa_exc, inspect
 from .base import _is_aliased_class, _class_to_mapper
+from . import util as orm_util
 
 class Load(Generative, MapperOption):
     def __init__(self, entity):
@@ -38,8 +39,7 @@ class Load(Generative, MapperOption):
     def _process(self, query, raiseerr):
         query._attributes.update(self.context)
 
-    @util.dependencies("sqlalchemy.orm.util")
-    def _generate_path(self, orm_util, path, attr, raiseerr=True):
+    def _generate_path(self, path, attr, raiseerr=True):
         if raiseerr and not path.has_entity:
             raise sa_exc.ArgumentError(
                 "Attribute '%s' of entity '%s' does not "
