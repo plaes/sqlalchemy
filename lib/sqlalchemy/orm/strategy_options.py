@@ -13,8 +13,6 @@ from .. import util
 from ..sql.base import _generative, Generative
 from .. import exc as sa_exc, inspect
 from .base import _is_aliased_class, _class_to_mapper
-from ..sql import util as sql_util
-from . import util as orm_util
 
 class Load(Generative, MapperOption):
     def __init__(self, entity):

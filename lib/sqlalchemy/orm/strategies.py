@@ -1056,19 +1056,29 @@ class JoinedLoader(AbstractRelationshipLoader):
             # nope
             return False
 
+        path = loadopt.path.parent
+
         # the option applies.  check if the "user_defined_eager_row_processor"
         # has been built up.
-        if "user_defined_eager_row_processor" in context.attributes:
+        adapter = path.get(context.attributes,
+                            "user_defined_eager_row_processor", False)
+        if adapter is not False:
             # just return it
-            return context.attributes["user_defined_eager_row_processor"]
+            return adapter
 
         # otherwise figure it out.
         alias = loadopt.local_opts["eager_from_alias"]
 
-        root_mapper, prop = loadopt.path.path[-2:]
+        root_mapper, prop = path[-2:]
+
+        #from .mapper import Mapper
+        #from .interfaces import MapperProperty
+        #assert isinstance(root_mapper, Mapper)
+        #assert isinstance(prop, MapperProperty)
+
         if loadopt._is_chain_link:
             adapter = context.query._polymorphic_adapters.get(prop.mapper, None)
-            loadopt.path.setdefault(context.attributes,
+            path.setdefault(context.attributes,
                         "user_defined_eager_row_processor",
                         adapter)
         else:
@@ -1078,17 +1088,18 @@ class JoinedLoader(AbstractRelationshipLoader):
                 adapter = sql_util.ColumnAdapter(alias,
                                     equivalents=prop.mapper._equivalent_columns)
             else:
-                if loadopt.path.contains(context.attributes, "path_with_polymorphic"):
-                    with_poly_info = loadopt.path.get(context.attributes,
+                if path.contains(context.attributes, "path_with_polymorphic"):
+                    with_poly_info = path.get(context.attributes,
                                                     "path_with_polymorphic")
                     adapter = orm_util.ORMAdapter(
                                 with_poly_info.entity,
                                 equivalents=prop.mapper._equivalent_columns)
                 else:
                     adapter = context.query._polymorphic_adapters.get(prop.mapper, None)
-            loadopt.path.set(context.attributes,
+            path.set(context.attributes,
                                 "user_defined_eager_row_processor",
                                 adapter)
+
             return adapter
 
     def _setup_query_on_user_defined_adapter(self, context, entity,
@@ -1097,6 +1108,7 @@ class JoinedLoader(AbstractRelationshipLoader):
         # apply some more wrapping to the "user defined adapter"
         # if we are setting up the query for SQL render.
         adapter = entity._get_entity_clauses(context.query, context)
+
         if adapter and user_defined_adapter:
             user_defined_adapter = user_defined_adapter.wrap(adapter)
             path.set(context.attributes, "user_defined_eager_row_processor",
