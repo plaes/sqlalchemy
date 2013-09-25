@@ -29,10 +29,6 @@ class Load(Generative, MapperOption):
     strategy = None
     propagate_to_loaders = False
 
-    @util.memoized_property
-    def _is_chain_link(self):
-        return "chain" in self.local_opts
-
     def process_query(self, query):
         self._process(query, True)
 
@@ -40,15 +36,7 @@ class Load(Generative, MapperOption):
         self._process(query, False)
 
     def _process(self, query, raiseerr):
-        Load._transfer_to_query(self.context, query)
-
-    @classmethod
-    def _transfer_to_query(cls, context, query):
-        for key, loader in context.items():
-            if loader._is_chain_link:
-                query._attributes.setdefault(key, loader)
-            else:
-                query._attributes[key] = loader
+        query._attributes.update(self.context)
 
     @util.dependencies("sqlalchemy.orm.util")
     def _generate_path(self, orm_util, path, attr, raiseerr=True):
@@ -138,7 +126,6 @@ class Load(Generative, MapperOption):
         loader.local_opts['eager_from_alias'] = alias
         return loader
 
-
     @util.memoized_property
     def strategy_impl(self):
         if self.path.has_entity:
@@ -147,16 +134,25 @@ class Load(Generative, MapperOption):
             return self.path.prop._get_strategy(self.strategy)
 
 class _UnboundLoad(Load):
+    """Represent a loader option that isn't tied to a root entity.
+
+    The loader option will produce an entity-linked :class:`.Load`
+    object when it is passed :meth:`.Query.options`.
+
+    This provides compatibility with the traditional system
+    of freestanding options, e.g. ``joinedload('x.y.z')``.
+
+    """
     def __init__(self):
         self.path = ()
         self._to_bind = set()
         self.local_opts = {}
 
+    _is_chain_link = False
+
     def _process(self, query, raiseerr):
-        context = {}
         for val in self._to_bind:
-            val._bind_loader(query, context, raiseerr)
-        Load._transfer_to_query(context, query)
+            val._bind_loader(query, query._attributes, raiseerr)
 
     @classmethod
     def _from_keys(self, meth, keys, chained, kw):
@@ -174,12 +170,12 @@ class _UnboundLoad(Load):
                 opt = meth(opt, token, **kw)
             else:
                 opt = opt.default(token)
-            opt.local_opts['chain'] = True
+            opt._is_chain_link = True
 
         opt = meth(opt, all_tokens[-1], **kw)
+        opt._is_chain_link = False
 
         return opt
-
 
     @_generative
     def _set_strategy(self, attr, strategy):
@@ -239,11 +235,19 @@ class _UnboundLoad(Load):
                 return
 
         loader.local_opts.update(self.local_opts)
-        if loader.path.has_entity:
-            loader.path.parent.set(context, "loader", loader)
-        else:
-            loader.path.set(context, "loader", loader)
 
+        if loader.path.has_entity:
+            effective_path = loader.path.parent
+        else:
+            effective_path = loader.path
+
+        # prioritize "first class" options over those
+        # that were "links in the chain", e.g. "x" and "y" in someload("x.y.z")
+        # versus someload("x") / someload("x.y")
+        if self._is_chain_link:
+            effective_path.setdefault(context, "loader", loader)
+        else:
+            effective_path.set(context, "loader", loader)
 
     def _generate_path(self, path, attr):
         return path + (attr, )

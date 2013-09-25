@@ -1076,31 +1076,25 @@ class JoinedLoader(AbstractRelationshipLoader):
         #assert isinstance(root_mapper, Mapper)
         #assert isinstance(prop, MapperProperty)
 
-        if loadopt._is_chain_link:
-            adapter = context.query._polymorphic_adapters.get(prop.mapper, None)
-            path.setdefault(context.attributes,
-                        "user_defined_eager_row_processor",
-                        adapter)
-        else:
-            if alias is not None:
-                if isinstance(alias, str):
-                    alias = prop.target.alias(alias)
-                adapter = sql_util.ColumnAdapter(alias,
-                                    equivalents=prop.mapper._equivalent_columns)
-            else:
-                if path.contains(context.attributes, "path_with_polymorphic"):
-                    with_poly_info = path.get(context.attributes,
-                                                    "path_with_polymorphic")
-                    adapter = orm_util.ORMAdapter(
-                                with_poly_info.entity,
+        if alias is not None:
+            if isinstance(alias, str):
+                alias = prop.target.alias(alias)
+            adapter = sql_util.ColumnAdapter(alias,
                                 equivalents=prop.mapper._equivalent_columns)
-                else:
-                    adapter = context.query._polymorphic_adapters.get(prop.mapper, None)
-            path.set(context.attributes,
-                                "user_defined_eager_row_processor",
-                                adapter)
+        else:
+            if path.contains(context.attributes, "path_with_polymorphic"):
+                with_poly_info = path.get(context.attributes,
+                                                "path_with_polymorphic")
+                adapter = orm_util.ORMAdapter(
+                            with_poly_info.entity,
+                            equivalents=prop.mapper._equivalent_columns)
+            else:
+                adapter = context.query._polymorphic_adapters.get(prop.mapper, None)
+        path.set(context.attributes,
+                            "user_defined_eager_row_processor",
+                            adapter)
 
-            return adapter
+        return adapter
 
     def _setup_query_on_user_defined_adapter(self, context, entity,
                                 path, adapter, user_defined_adapter):
