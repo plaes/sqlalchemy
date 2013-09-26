@@ -2166,7 +2166,8 @@ class MixedSelfReferentialEagerTest(fixtures.MappedTest):
                     options(
                                 joinedload('parent_b1'),
                                 joinedload('parent_b2'),
-                                joinedload('parent_z')).
+                                joinedload('parent_z')
+                            ).
                             filter(B.id.in_([2, 8, 11])).order_by(B.id).all(),
                 [
                     B(id=2, parent_z=A(id=1), parent_b1=B(id=1), parent_b2=None),

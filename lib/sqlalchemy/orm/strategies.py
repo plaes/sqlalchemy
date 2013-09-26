@@ -681,7 +681,7 @@ class SubqueryLoader(AbstractRelationshipLoader):
 
         # if not via query option, check for
         # a cycle
-        if not path.contains(context.attributes, "loaderstrategy"):
+        if not path.contains(context.attributes, "loader"):
             if self.join_depth:
                 if path.length / 2 > self.join_depth:
                     return
@@ -1003,7 +1003,7 @@ class JoinedLoader(AbstractRelationshipLoader):
         else:
             # if not via query option, check for
             # a cycle
-            if not path.contains(context.attributes, "loaderstrategy"):
+            if not path.contains(context.attributes, "loader"):
                 if self.join_depth:
                     if path.length / 2 > self.join_depth:
                         return
