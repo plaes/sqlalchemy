@@ -433,7 +433,7 @@ class StrategizedProperty(MapperProperty):
         if not load:
             wc_key = self._wildcard_path
             if wc_key and wc_key in context.attributes:
-                load = context.attributes[wc_key]._loader_for(self, path)
+                load = context.attributes[wc_key]._loader_for_wildcard(self, path)
 
         return load
 

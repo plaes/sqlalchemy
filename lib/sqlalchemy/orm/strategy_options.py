@@ -39,7 +39,7 @@ class Load(Generative, MapperOption):
     def _process(self, query, raiseerr):
         query._attributes.update(self.context)
 
-    def _generate_path(self, path, attr, raiseerr=True):
+    def _generate_path(self, path, attr, wildcard_key, raiseerr=True):
         if raiseerr and not path.has_entity:
             raise sa_exc.ArgumentError(
                 "Attribute '%s' of entity '%s' does not "
@@ -48,9 +48,10 @@ class Load(Generative, MapperOption):
             )
 
         if isinstance(attr, util.string_types):
-
-            if attr == '*':
-                return path.token("relationship:*")
+            if attr.endswith('*'):
+                if wildcard_key:
+                    attr = "%s:*" % wildcard_key
+                return path.token(attr)
 
             try:
                 attr = path.entity.attrs[attr]
@@ -94,28 +95,41 @@ class Load(Generative, MapperOption):
 
     @_generative
     def _set_strategy(self, attr, strategy):
-        self.path = self._generate_path(self.path, attr)
+        self.path = self._generate_path(self.path, attr, "relationship")
         self.strategy = strategy
         self.propagate_to_loaders = True
         if strategy is not None:
-            self._set_path_strategy(False)
+            self._set_path_strategy()
 
     @_generative
     def _set_column_strategy(self, attrs, strategy):
         for attr in attrs:
-            path = self._generate_path(self.path, attr)
+            path = self._generate_path(self.path, attr, "column")
             cloned = self._generate()
             cloned.strategy = strategy
             cloned.path = path
             cloned.propagate_to_loaders = True
-            cloned._set_path_strategy(True)
+            cloned._set_path_strategy()
 
-    def _set_path_strategy(self, iscolumn):
-        if iscolumn:
-            self.path.set(self.context, "loader", self)
-        else:
+    def _set_path_strategy(self):
+        if self.path.has_entity:
             self.path.parent.set(self.context, "loader", self)
+        else:
+            self.path.set(self.context, "loader", self)
 
+    @util.memoized_property
+    def strategy_impl(self):
+        if self.path.has_entity:
+            return self.path.parent.prop._get_strategy(self.strategy)
+        else:
+            return self.path.prop._get_strategy(self.strategy)
+
+    def _loader_for_wildcard(self, prop, path):
+        loader = self._generate()
+        path = path[prop]
+        loader.path = path[path.entity]
+        loader.local_opts = self.local_opts
+        return loader
 
     def defer(self, *attrs):
         return self._set_column_strategy(
@@ -164,19 +178,6 @@ class Load(Generative, MapperOption):
         loader.local_opts['eager_from_alias'] = alias
         return loader
 
-    def _loader_for(self, prop, path):
-        loader = self._generate()
-        path = path[prop]
-        loader.path = path[path.entity]
-        loader.local_opts = self.local_opts
-        return loader
-
-    @util.memoized_property
-    def strategy_impl(self):
-        if self.path.has_entity:
-            return self.path.parent.prop._get_strategy(self.strategy)
-        else:
-            return self.path.prop._get_strategy(self.strategy)
 
 class _UnboundLoad(Load):
     """Represent a loader option that isn't tied to a root entity.
@@ -195,10 +196,14 @@ class _UnboundLoad(Load):
 
     _is_chain_link = False
 
-
-    def _set_path_strategy(self, iscolumn):
+    def _set_path_strategy(self):
         self._to_bind.add(self)
 
+    def _generate_path(self, path, attr, wildcard_key):
+        if wildcard_key and isinstance(attr, util.string_types) and attr == '*':
+            attr = "%s:*" % wildcard_key
+
+        return path + (attr, )
 
     def _process(self, query, raiseerr):
         for val in self._to_bind:
@@ -267,7 +272,7 @@ class _UnboundLoad(Load):
 
         path = loader.path
         for token in start_path:
-            loader.path = path = loader._generate_path(loader.path, token, raiseerr)
+            loader.path = path = loader._generate_path(loader.path, token, None, raiseerr)
             if path is None:
                 return
 
@@ -285,9 +290,6 @@ class _UnboundLoad(Load):
             effective_path.setdefault(context, "loader", loader)
         else:
             effective_path.set(context, "loader", loader)
-
-    def _generate_path(self, path, attr):
-        return path + (attr, )
 
     def _chop_path(self, to_chop, path):
         i = -1
