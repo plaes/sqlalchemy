@@ -92,6 +92,7 @@ class Load(Generative, MapperOption):
     def _set_strategy(self, attr, strategy):
         self.path = self._generate_path(self.path, attr)
         self.strategy = strategy
+        self.propagate_to_loaders = True
         if strategy is not None:
             self.path.parent.set(self.context, "loader", self)
 
@@ -102,6 +103,7 @@ class Load(Generative, MapperOption):
             cloned = self._generate()
             cloned.strategy = strategy
             cloned.path = path
+            cloned.propagate_to_loaders = True
             path.set(self.context, "loader", cloned)
 
     def defer(self, *attrs):
@@ -193,6 +195,7 @@ class _UnboundLoad(Load):
     def _set_strategy(self, attr, strategy):
         self.path = self._generate_path(self.path, attr)
         self.strategy = strategy
+        self.propagate_to_loaders = True
         if strategy is not None:
             self._to_bind.add(self)
 
@@ -203,6 +206,7 @@ class _UnboundLoad(Load):
             cloned = self._generate()
             cloned.strategy = strategy
             cloned.path = path
+            cloned.propagate_to_loaders = True
             self._to_bind.add(cloned)
 
     def _bind_loader(self, query, context, raiseerr):
