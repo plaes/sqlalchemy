@@ -423,17 +423,17 @@ class StrategizedProperty(MapperProperty):
     @util.memoized_property
     def _wildcard_path(self):
         if self.strategy_wildcard_key:
-            return ('loaderstrategy', (self.strategy_wildcard_key,))
+            return ('loader', (self.strategy_wildcard_key,))
         else:
             return None
 
     def _get_context_loader(self, context, path):
         load = path._inlined_get_for(self, context, 'loader')
 
-        #if not strategy_cls:
-        #    wc_key = self._wildcard_path
-        #   if wc_key and wc_key in context.attributes:
-        #        strategy_cls = context.attributes[wc_key]
+        if not load:
+            wc_key = self._wildcard_path
+            if wc_key and wc_key in context.attributes:
+                load = context.attributes[wc_key]._loader_for(self, path)
 
         return load
 

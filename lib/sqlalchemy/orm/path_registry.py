@@ -146,6 +146,8 @@ class TokenRegistry(PathRegistry):
         self.parent = parent
         self.path = parent.path + (token,)
 
+    has_entity = False
+
     def __getitem__(self, entity):
         raise NotImplementedError()
 

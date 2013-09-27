@@ -24,7 +24,7 @@ class OptionsTest(QueryTest):
         from sqlalchemy.orm import strategy_options
 
         return strategy_options._UnboundLoad._from_keys(
-                    strategy_options._UnboundLoad.joined, arg, True, {})
+                    strategy_options._UnboundLoad.joinedload, arg, True, {})
 
 
     def _make_path(self, path):

@@ -48,6 +48,10 @@ class Load(Generative, MapperOption):
             )
 
         if isinstance(attr, util.string_types):
+
+            if attr == '*':
+                return path.token("relationship:*")
+
             try:
                 attr = path.entity.attrs[attr]
             except KeyError:
@@ -94,7 +98,7 @@ class Load(Generative, MapperOption):
         self.strategy = strategy
         self.propagate_to_loaders = True
         if strategy is not None:
-            self.path.parent.set(self.context, "loader", self)
+            self._set_path_strategy(False)
 
     @_generative
     def _set_column_strategy(self, attrs, strategy):
@@ -104,7 +108,14 @@ class Load(Generative, MapperOption):
             cloned.strategy = strategy
             cloned.path = path
             cloned.propagate_to_loaders = True
-            path.set(self.context, "loader", cloned)
+            cloned._set_path_strategy(True)
+
+    def _set_path_strategy(self, iscolumn):
+        if iscolumn:
+            self.path.set(self.context, "loader", self)
+        else:
+            self.path.parent.set(self.context, "loader", self)
+
 
     def defer(self, *attrs):
         return self._set_column_strategy(
@@ -153,6 +164,13 @@ class Load(Generative, MapperOption):
         loader.local_opts['eager_from_alias'] = alias
         return loader
 
+    def _loader_for(self, prop, path):
+        loader = self._generate()
+        path = path[prop]
+        loader.path = path[path.entity]
+        loader.local_opts = self.local_opts
+        return loader
+
     @util.memoized_property
     def strategy_impl(self):
         if self.path.has_entity:
@@ -176,6 +194,11 @@ class _UnboundLoad(Load):
         self.local_opts = {}
 
     _is_chain_link = False
+
+
+    def _set_path_strategy(self, iscolumn):
+        self._to_bind.add(self)
+
 
     def _process(self, query, raiseerr):
         for val in self._to_bind:
@@ -204,23 +227,6 @@ class _UnboundLoad(Load):
 
         return opt
 
-    @_generative
-    def _set_strategy(self, attr, strategy):
-        self.path = self._generate_path(self.path, attr)
-        self.strategy = strategy
-        self.propagate_to_loaders = True
-        if strategy is not None:
-            self._to_bind.add(self)
-
-    @_generative
-    def _set_column_strategy(self, attrs, strategy):
-        for attr in attrs:
-            path = self._generate_path(self.path, attr)
-            cloned = self._generate()
-            cloned.strategy = strategy
-            cloned.path = path
-            cloned.propagate_to_loaders = True
-            self._to_bind.add(cloned)
 
     def _bind_loader(self, query, context, raiseerr):
         start_path = self.path
