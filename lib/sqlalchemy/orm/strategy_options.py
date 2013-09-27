@@ -112,19 +112,32 @@ class Load(Generative, MapperOption):
                     (("deferred", True), ("instrument", True))
                 )
 
+    def undefer(self, *attrs):
+        return self._set_column_strategy(
+                    attrs,
+                    (("deferred", False), ("instrument", True))
+                )
+
     def default(self, attr):
         return self._set_strategy(
                     attr,
                     None
                 )
 
-    def joined(self, attr, innerjoin=None):
+    def joinedload(self, attr, innerjoin=None):
         loader = self._set_strategy(
                     attr,
                     (("lazy", "joined"),)
                 )
         if innerjoin is not None:
             loader.local_opts['innerjoin'] = innerjoin
+        return loader
+
+    def lazyload(self, attr):
+        loader = self._set_strategy(
+                    attr,
+                    (("lazy", "select"),)
+                )
         return loader
 
     def contains_eager(self, attr, alias=None):
@@ -379,7 +392,7 @@ class _UnboundLoad(Load):
         See also:  :func:`subqueryload`, :func:`lazyload`
 
         """
-        return cls._from_keys(cls.joined, keys, False, kw)
+        return cls._from_keys(cls.joinedload, keys, False, kw)
 
     @classmethod
     def _joinedload_all(cls, *keys, **kw):
@@ -413,7 +426,7 @@ class _UnboundLoad(Load):
         See also:  :func:`subqueryload_all`, :func:`lazyload`
 
         """
-        return cls._from_keys(cls.joined, keys, True, kw)
+        return cls._from_keys(cls.joinedload, keys, True, kw)
 
     @classmethod
     def _contains_eager(cls, *keys, **kw):
@@ -452,6 +465,31 @@ class _UnboundLoad(Load):
 
         """
         return cls._from_keys(cls.contains_eager, keys, True, kw)
+
+    @classmethod
+    def _lazyload(cls, *keys):
+        """Return a ``MapperOption`` that will convert the property of the given
+        name or series of mapped attributes into a lazy load.
+
+        Used with :meth:`~sqlalchemy.orm.query.Query.options`.
+
+        See also:  :func:`eagerload`, :func:`subqueryload`, :func:`immediateload`
+
+        """
+        return cls._from_keys(cls.lazyload, keys, False, {})
+
+    @classmethod
+    def _lazyload_all(cls, *keys):
+        """Return a ``MapperOption`` that will convert all the properties
+        along the given dot-separated path or series of mapped attributes
+        into a lazy load.
+
+        Used with :meth:`~sqlalchemy.orm.query.Query.options`.
+
+        See also:  :func:`eagerload`, :func:`subqueryload`, :func:`immediateload`
+
+        """
+        return cls._from_keys(cls.lazyload, keys, True, {})
 
     @classmethod
     def _defer(cls, *key):
@@ -498,15 +536,57 @@ class _UnboundLoad(Load):
         """
         return cls._from_keys(cls.defer, key, False, {})
 
+    @classmethod
+    def _undefer(cls, *key):
+        """Return a :class:`.MapperOption` that will convert the column property
+        of the given name into a non-deferred (regular column) load.
 
-def eagerload(*args, **kwargs):
-    """A synonym for :func:`joinedload()`."""
-    return joinedload(*args, **kwargs)
+        Used with :meth:`.Query.options`.
+
+        e.g.::
+
+            from sqlalchemy.orm import undefer
+
+            query(MyClass).options(
+                        undefer("attribute_one"),
+                        undefer("attribute_two"))
+
+        A class bound descriptor is also accepted::
+
+            query(MyClass).options(
+                        undefer(MyClass.attribute_one),
+                        undefer(MyClass.attribute_two))
+
+        A "path" can be specified onto a related or collection object using a
+        dotted name. The :func:`.orm.undefer` option will be applied to that
+        object when loaded::
+
+            query(MyClass).options(
+                        undefer("related.attribute_one"),
+                        undefer("related.attribute_two"))
+
+        To specify a path via class, send multiple arguments::
+
+            query(MyClass).options(
+                        undefer(MyClass.related, MyOtherClass.attribute_one),
+                        undefer(MyClass.related, MyOtherClass.attribute_two))
+
+        See also:
+
+        :func:`.orm.undefer_group` as a means to "undefer" a group
+        of attributes at once.
+
+        :ref:`deferred`
+
+        :param \*key: A key representing an individual path.   Multiple entries
+         are accepted to allow a multiple-token path for a single target, not
+         multiple targets.
+
+        """
+        return cls._from_keys(cls.undefer, key, False, {})
 
 
-def eagerload_all(*args, **kwargs):
-    """A synonym for :func:`joinedload_all()`"""
-    return joinedload_all(*args, **kwargs)
+
 
 
 def subqueryload(*keys):
@@ -563,29 +643,6 @@ def subqueryload_all(*keys):
     return _strategies.EagerLazyOption(keys, lazy="subquery", chained=True)
 
 
-def lazyload(*keys):
-    """Return a ``MapperOption`` that will convert the property of the given
-    name or series of mapped attributes into a lazy load.
-
-    Used with :meth:`~sqlalchemy.orm.query.Query.options`.
-
-    See also:  :func:`eagerload`, :func:`subqueryload`, :func:`immediateload`
-
-    """
-    return _strategies.EagerLazyOption(keys, lazy=True)
-
-
-def lazyload_all(*keys):
-    """Return a ``MapperOption`` that will convert all the properties
-    along the given dot-separated path or series of mapped attributes
-    into a lazy load.
-
-    Used with :meth:`~sqlalchemy.orm.query.Query.options`.
-
-    See also:  :func:`eagerload`, :func:`subqueryload`, :func:`immediateload`
-
-    """
-    return _strategies.EagerLazyOption(keys, lazy=True, chained=True)
 
 
 def noload(*keys):
@@ -630,53 +687,6 @@ def immediateload(*keys):
 
 
 
-def undefer(*key):
-    """Return a :class:`.MapperOption` that will convert the column property
-    of the given name into a non-deferred (regular column) load.
-
-    Used with :meth:`.Query.options`.
-
-    e.g.::
-
-        from sqlalchemy.orm import undefer
-
-        query(MyClass).options(
-                    undefer("attribute_one"),
-                    undefer("attribute_two"))
-
-    A class bound descriptor is also accepted::
-
-        query(MyClass).options(
-                    undefer(MyClass.attribute_one),
-                    undefer(MyClass.attribute_two))
-
-    A "path" can be specified onto a related or collection object using a
-    dotted name. The :func:`.orm.undefer` option will be applied to that
-    object when loaded::
-
-        query(MyClass).options(
-                    undefer("related.attribute_one"),
-                    undefer("related.attribute_two"))
-
-    To specify a path via class, send multiple arguments::
-
-        query(MyClass).options(
-                    undefer(MyClass.related, MyOtherClass.attribute_one),
-                    undefer(MyClass.related, MyOtherClass.attribute_two))
-
-    See also:
-
-    :func:`.orm.undefer_group` as a means to "undefer" a group
-    of attributes at once.
-
-    :ref:`deferred`
-
-    :param \*key: A key representing an individual path.   Multiple entries
-     are accepted to allow a multiple-token path for a single target, not
-     multiple targets.
-
-    """
-    return _strategies.DeferredOption(key, defer=False)
 
 
 def undefer_group(name):

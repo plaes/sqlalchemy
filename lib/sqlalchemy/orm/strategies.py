@@ -519,7 +519,8 @@ class LazyLoader(AbstractRelationshipLoader):
             for pk in self.mapper.primary_key
         ]
 
-    def _emit_lazyload(self, session, state, ident_key, passive):
+    @util.dependencies("sqlalchemy.orm.strategy_options")
+    def _emit_lazyload(self, strategy_options, session, state, ident_key, passive):
         q = session.query(self.mapper)._adapt_all_clauses()
 
         q = q._with_invoke_all_eagers(False)
@@ -548,7 +549,7 @@ class LazyLoader(AbstractRelationshipLoader):
             if rev.direction is interfaces.MANYTOONE and \
                         rev._use_get and \
                         not isinstance(rev.strategy, LazyLoader):
-                q = q.options(EagerLazyOption((rev.key,), lazy='select'))
+                q = q.options(strategy_options.Load(rev.parent).lazyload(rev.key))
 
         lazy_clause = self.lazy_clause(state, passive=passive)
 
