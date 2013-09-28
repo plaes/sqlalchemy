@@ -1707,7 +1707,6 @@ class ORMLoggingTest(_fixtures.FixtureTest):
 
 class OptionsTest(_fixtures.FixtureTest):
 
-    @testing.fails_on('maxdb', 'FIXME: unknown')
     def test_synonym_options(self):
         Address, addresses, users, User = (self.classes.Address,
                                 self.tables.addresses,
@@ -1925,12 +1924,11 @@ class OptionsTest(_fixtures.FixtureTest):
 
         oalias = aliased(Order)
         opt1 = sa.orm.joinedload(User.orders, Order.items)
-        opt2a, opt2b = sa.orm.contains_eager(User.orders, Order.items, alias=oalias)
-        u1 = sess.query(User).join(oalias, User.orders).options(opt1, opt2a, opt2b).first()
+        opt2 = sa.orm.contains_eager(User.orders, Order.items, alias=oalias)
+        u1 = sess.query(User).join(oalias, User.orders).options(opt1, opt2).first()
         ustate = attributes.instance_state(u1)
         assert opt1 in ustate.load_options
-        assert opt2a not in ustate.load_options
-        assert opt2b not in ustate.load_options
+        assert opt2 not in ustate.load_options
 
 
 class DeepOptionsTest(_fixtures.FixtureTest):

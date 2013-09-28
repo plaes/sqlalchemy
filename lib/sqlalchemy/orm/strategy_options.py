@@ -54,8 +54,10 @@ class Load(Generative, MapperOption):
                 return path.token(attr)
 
             try:
-                attr = path.entity.attrs[attr]
-            except KeyError:
+                # use getattr on the class to work around
+                # synonyms, hybrids, etc.
+                attr = getattr(path.entity.class_, attr)
+            except AttributeError:
                 if raiseerr:
                     raise sa_exc.ArgumentError(
                         "Can't find property named '%s' on the "
@@ -64,6 +66,8 @@ class Load(Generative, MapperOption):
                     )
                 else:
                     return None
+            else:
+                attr = attr.property
 
             path = path[attr]
         else:
@@ -94,10 +98,10 @@ class Load(Generative, MapperOption):
         return path
 
     @_generative
-    def _set_strategy(self, attr, strategy):
+    def _set_strategy(self, attr, strategy, propagate_to_loaders=True):
         self.path = self._generate_path(self.path, attr, "relationship")
         self.strategy = strategy
-        self.propagate_to_loaders = True
+        self.propagate_to_loaders = propagate_to_loaders
         if strategy is not None:
             self._set_path_strategy()
 
@@ -198,7 +202,8 @@ class Load(Generative, MapperOption):
 
         loader = self._set_strategy(
                     attr,
-                    (("lazy", "joined"),)
+                    (("lazy", "joined"),),
+                    propagate_to_loaders=False
                 )
         loader.local_opts['eager_from_alias'] = alias
         return loader
