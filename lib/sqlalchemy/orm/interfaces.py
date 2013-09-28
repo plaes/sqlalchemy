@@ -467,8 +467,7 @@ class StrategizedProperty(MapperProperty):
 
     def do_init(self):
         self._strategies = {}
-        self.strategy = self._get_strategy(
-                            self.strategy_class._strategy_keys[0])
+        self.strategy = self._get_strategy_by_cls(self.strategy_class)
 
     def post_instrument_class(self, mapper):
         if self.is_primary() and \

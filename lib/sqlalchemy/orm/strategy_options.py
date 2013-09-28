@@ -44,7 +44,7 @@ class Load(Generative, MapperOption):
             raise sa_exc.ArgumentError(
                 "Attribute '%s' of entity '%s' does not "
                 "refer to a mapped entity" %
-                (path.prop.key, path.parent.entity)
+                (path.key, path.parent.entity)
             )
 
         if isinstance(attr, util.string_types):

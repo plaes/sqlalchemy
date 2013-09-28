@@ -150,6 +150,10 @@ class TokenRegistry(PathRegistry):
     def __getitem__(self, entity):
         raise NotImplementedError()
 
+    @property
+    def key(self):
+        return self.token
+
 
 class PropRegistry(PathRegistry):
     def __init__(self, parent, prop):
@@ -167,6 +171,11 @@ class PropRegistry(PathRegistry):
         self.prop = prop
         self.parent = parent
         self.path = parent.path + (prop,)
+
+    @property
+    def key(self):
+        return self.prop.key
+
 
     @util.memoized_property
     def has_entity(self):
