@@ -2805,7 +2805,7 @@ class CyclicalInheritingEagerTestThree(fixtures.DeclarativeMappedTest,
         Director = self.classes.Director
         sess = create_session()
         self.assert_compile(
-            sess.query(PersistentObject).options(joinedload(Director.other, join_depth=1)),
+            sess.query(PersistentObject).options(joinedload(Director.other)),
             "SELECT persistent.id AS persistent_id, director.id AS director_id, "
             "director.other_id AS director_other_id, "
             "director.name AS director_name, persistent_1.id AS "

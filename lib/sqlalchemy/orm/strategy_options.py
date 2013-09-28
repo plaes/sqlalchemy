@@ -162,10 +162,31 @@ class Load(Generative, MapperOption):
             loader.local_opts['innerjoin'] = innerjoin
         return loader
 
+    def subqueryload(self, attr):
+        loader = self._set_strategy(
+                    attr,
+                    (("lazy", "subquery"),)
+                )
+        return loader
+
     def lazyload(self, attr):
         loader = self._set_strategy(
                     attr,
                     (("lazy", "select"),)
+                )
+        return loader
+
+    def immediateload(self, attr):
+        loader = self._set_strategy(
+                    attr,
+                    (("lazy", "immediate"),)
+                )
+        return loader
+
+    def noload(self, attr):
+        loader = self._set_strategy(
+                    attr,
+                    (("lazy", "noload"),)
                 )
         return loader
 
@@ -635,106 +656,97 @@ class _UnboundLoad(Load):
         return cls._from_keys(cls.undefer, key, False, {})
 
 
+    @classmethod
+    def _subqueryload(cls, *keys):
+        """Return a ``MapperOption`` that will convert the property
+        of the given name or series of mapped attributes
+        into an subquery eager load.
+
+        Used with :meth:`~sqlalchemy.orm.query.Query.options`.
+
+        examples::
+
+            # subquery-load the "orders" collection on "User"
+            query(User).options(subqueryload(User.orders))
+
+            # subquery-load the "keywords" collection on each "Item",
+            # but not the "items" collection on "Order" - those
+            # remain lazily loaded.
+            query(Order).options(subqueryload(Order.items, Item.keywords))
+
+            # to subquery-load across both, use subqueryload_all()
+            query(Order).options(subqueryload_all(Order.items, Item.keywords))
+
+            # set the default strategy to be 'subquery'
+            query(Order).options(subqueryload('*'))
+
+        See also:  :func:`joinedload`, :func:`lazyload`
+
+        """
+        return cls._from_keys(cls.subqueryload, keys, False, {})
 
 
+    @classmethod
+    def _subqueryload_all(cls, *keys):
+        """Return a ``MapperOption`` that will convert all properties along the
+        given dot-separated path or series of mapped attributes
+        into a subquery eager load.
 
-def subqueryload(*keys):
-    """Return a ``MapperOption`` that will convert the property
-    of the given name or series of mapped attributes
-    into an subquery eager load.
+        Used with :meth:`~sqlalchemy.orm.query.Query.options`.
 
-    Used with :meth:`~sqlalchemy.orm.query.Query.options`.
+        For example::
 
-    examples::
+            query.options(subqueryload_all('orders.items.keywords'))...
 
-        # subquery-load the "orders" collection on "User"
-        query(User).options(subqueryload(User.orders))
+        will set all of ``orders``, ``orders.items``, and
+        ``orders.items.keywords`` to load in one subquery eager load.
 
-        # subquery-load the "keywords" collection on each "Item",
-        # but not the "items" collection on "Order" - those
-        # remain lazily loaded.
-        query(Order).options(subqueryload(Order.items, Item.keywords))
+        Individual descriptors are accepted as arguments as well::
 
-        # to subquery-load across both, use subqueryload_all()
-        query(Order).options(subqueryload_all(Order.items, Item.keywords))
+            query.options(subqueryload_all(User.orders, Order.items,
+            Item.keywords))
 
-        # set the default strategy to be 'subquery'
-        query(Order).options(subqueryload('*'))
+        See also:  :func:`joinedload_all`, :func:`lazyload`, :func:`immediateload`
 
-    See also:  :func:`joinedload`, :func:`lazyload`
+        """
+        return cls._from_keys(cls.subqueryload, keys, True, {})
 
-    """
-    return _strategies.EagerLazyOption(keys, lazy="subquery")
+    @classmethod
+    def _noload(cls, *keys):
+        """Return a ``MapperOption`` that will convert the property of the
+        given name or series of mapped attributes into a non-load.
 
+        Used with :meth:`~sqlalchemy.orm.query.Query.options`.
 
-def subqueryload_all(*keys):
-    """Return a ``MapperOption`` that will convert all properties along the
-    given dot-separated path or series of mapped attributes
-    into a subquery eager load.
+        See also:  :func:`lazyload`, :func:`eagerload`,
+        :func:`subqueryload`, :func:`immediateload`
 
-    Used with :meth:`~sqlalchemy.orm.query.Query.options`.
-
-    For example::
-
-        query.options(subqueryload_all('orders.items.keywords'))...
-
-    will set all of ``orders``, ``orders.items``, and
-    ``orders.items.keywords`` to load in one subquery eager load.
-
-    Individual descriptors are accepted as arguments as well::
-
-        query.options(subqueryload_all(User.orders, Order.items,
-        Item.keywords))
-
-    See also:  :func:`joinedload_all`, :func:`lazyload`, :func:`immediateload`
-
-    """
-    return _strategies.EagerLazyOption(keys, lazy="subquery", chained=True)
+        """
+        return cls._from_keys(cls.noload, keys, False, {})
 
 
+    @classmethod
+    def _immediateload(cls, *keys):
+        """Return a ``MapperOption`` that will convert the property of the given
+        name or series of mapped attributes into an immediate load.
 
+        The "immediate" load means the attribute will be fetched
+        with a separate SELECT statement per parent in the
+        same way as lazy loading - except the loader is guaranteed
+        to be called at load time before the parent object
+        is returned in the result.
 
-def noload(*keys):
-    """Return a ``MapperOption`` that will convert the property of the
-    given name or series of mapped attributes into a non-load.
+        The normal behavior of lazy loading applies - if
+        the relationship is a simple many-to-one, and the child
+        object is already present in the :class:`.Session`,
+        no SELECT statement will be emitted.
 
-    Used with :meth:`~sqlalchemy.orm.query.Query.options`.
+        Used with :meth:`~sqlalchemy.orm.query.Query.options`.
 
-    See also:  :func:`lazyload`, :func:`eagerload`,
-    :func:`subqueryload`, :func:`immediateload`
+        See also:  :func:`lazyload`, :func:`eagerload`, :func:`subqueryload`
 
-    """
-    return _strategies.EagerLazyOption(keys, lazy=None)
+        .. versionadded:: 0.6.5
 
-
-def immediateload(*keys):
-    """Return a ``MapperOption`` that will convert the property of the given
-    name or series of mapped attributes into an immediate load.
-
-    The "immediate" load means the attribute will be fetched
-    with a separate SELECT statement per parent in the
-    same way as lazy loading - except the loader is guaranteed
-    to be called at load time before the parent object
-    is returned in the result.
-
-    The normal behavior of lazy loading applies - if
-    the relationship is a simple many-to-one, and the child
-    object is already present in the :class:`.Session`,
-    no SELECT statement will be emitted.
-
-    Used with :meth:`~sqlalchemy.orm.query.Query.options`.
-
-    See also:  :func:`lazyload`, :func:`eagerload`, :func:`subqueryload`
-
-    .. versionadded:: 0.6.5
-
-    """
-    return _strategies.EagerLazyOption(keys, lazy='immediate')
-
-
-
-
-
-
-
+        """
+        return cls._from_keys(cls.immediateload, keys, False, {})
 

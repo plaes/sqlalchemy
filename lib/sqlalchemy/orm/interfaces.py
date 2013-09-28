@@ -422,13 +422,16 @@ class StrategizedProperty(MapperProperty):
 
     def _get_context_loader(self, context, path):
         load = None
-        search_path = path.path + (self, )
-        path_key = ("loader", search_path)
+
+        # use EntityRegistry.__getitem__()->PropRegistry here so
+        # that the path is stated in terms of our base
+        search_path = dict.__getitem__(path, self)
+        path_key = ("loader", search_path.path)
         if path_key in context.attributes:
             load = context.attributes[path_key]
         else:
-            search_path = path.path + (self.strategy_wildcard_key, )
-            path_key = ("loader", search_path)
+            search_path = search_path.wildcard_path
+            path_key = ("loader", search_path.path)
             if path_key in context.attributes:
                 load = context.attributes[path_key]
 

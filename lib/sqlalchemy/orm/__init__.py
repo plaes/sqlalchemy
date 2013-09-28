@@ -224,6 +224,10 @@ undefer_group = public_factory(_UnboundLoad._undefer_group, ".orm.undefer_group"
 load_only = public_factory(_UnboundLoad._load_only, ".orm.load_only")
 lazyload = public_factory(_UnboundLoad._lazyload, ".orm.lazyload")
 lazyload_all = public_factory(_UnboundLoad._lazyload_all, ".orm.lazyload_all")
+subqueryload = public_factory(_UnboundLoad._subqueryload, ".orm.subqueryload")
+subqueryload_all = public_factory(_UnboundLoad._subqueryload_all, ".orm.subqueryload_all")
+immediateload = public_factory(_UnboundLoad._immediateload, ".orm.immediateload")
+noload = public_factory(_UnboundLoad._noload, ".orm.noload")
 
 def eagerload(*args, **kwargs):
     """A synonym for :func:`joinedload()`."""
@@ -235,9 +239,6 @@ def eagerload_all(*args, **kwargs):
     return joinedload_all(*args, **kwargs)
 
 
-from .strategy_options import subqueryload, \
-    subqueryload_all, \
-    immediateload, noload
 
 
 contains_alias = public_factory(AliasOption, ".orm.contains_alias")

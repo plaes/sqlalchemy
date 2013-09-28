@@ -176,6 +176,14 @@ class PropRegistry(PathRegistry):
     def entity(self):
         return self.prop.mapper
 
+    @util.memoized_property
+    def wildcard_path(self):
+        """Given a path (mapper A, prop X), replace the prop with the wildcard,
+        e.g. (mapper A, 'relationship:*') or (mapper A, 'column:*').
+
+        """
+        return self.parent.token(self.prop.strategy_wildcard_key)
+
     @property
     def mapper(self):
         return self.entity
