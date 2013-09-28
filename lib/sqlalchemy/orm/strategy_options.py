@@ -102,13 +102,15 @@ class Load(Generative, MapperOption):
             self._set_path_strategy()
 
     @_generative
-    def _set_column_strategy(self, attrs, strategy):
+    def _set_column_strategy(self, attrs, strategy, opts=None):
         for attr in attrs:
             path = self._generate_path(self.path, attr, "column")
             cloned = self._generate()
             cloned.strategy = strategy
             cloned.path = path
             cloned.propagate_to_loaders = True
+            if opts:
+                cloned.local_opts.update(opts)
             cloned._set_path_strategy()
 
     def _set_path_strategy(self):
@@ -116,13 +118,6 @@ class Load(Generative, MapperOption):
             self.path.parent.set(self.context, "loader", self)
         else:
             self.path.set(self.context, "loader", self)
-
-    def _loader_for_wildcard(self, prop, path):
-        loader = self._generate()
-        path = path[prop]
-        loader.path = path[path.entity]
-        loader.local_opts = self.local_opts
-        return loader
 
     def defer(self, *attrs):
         return self._set_column_strategy(
@@ -150,6 +145,13 @@ class Load(Generative, MapperOption):
         cloned._set_column_strategy("*",
                         (("deferred", True), ("instrument", True)))
         return cloned
+
+    def undefer_group(self, name):
+        return self._set_column_strategy(
+                                "*",
+                                None,
+                                {"undefer_group": name}
+                        )
 
     def joinedload(self, attr, innerjoin=None):
         loader = self._set_strategy(
@@ -515,6 +517,28 @@ class _UnboundLoad(Load):
         are set as deferred."""
         return _UnboundLoad().load_only(*attrs)
 
+    @classmethod
+    def _undefer_group(cls, name):
+        """Return a :class:`.MapperOption` that will convert the given group of
+        deferred column properties into a non-deferred (regular column) load.
+
+        Used with :meth:`.Query.options`.
+
+        e.g.::
+
+            query(MyClass).options(undefer("group_one"))
+
+        See also:
+
+        :ref:`deferred`
+
+        :param name: String name of the deferred group.   This name is
+         established using the "group" name to the :func:`.orm.deferred`
+         configurational function.
+
+        """
+        return _UnboundLoad().undefer_group(name)
+
 
     @classmethod
     def _defer(cls, *key):
@@ -713,25 +737,4 @@ def immediateload(*keys):
 
 
 
-
-def undefer_group(name):
-    """Return a :class:`.MapperOption` that will convert the given group of
-    deferred column properties into a non-deferred (regular column) load.
-
-    Used with :meth:`.Query.options`.
-
-    e.g.::
-
-        query(MyClass).options(undefer("group_one"))
-
-    See also:
-
-    :ref:`deferred`
-
-    :param name: String name of the deferred group.   This name is
-     established using the "group" name to the :func:`.orm.deferred`
-     configurational function.
-
-    """
-    return _strategies.UndeferGroupOption(name)
 

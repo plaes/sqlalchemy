@@ -223,3 +223,4 @@ class EntityRegistry(PathRegistry, dict):
         return item
 
 
+

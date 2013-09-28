@@ -206,8 +206,8 @@ class DeferredColumnLoader(LoaderStrategy):
     def setup_query(self, context, entity, path, loadopt, adapter,
                                 only_load_props=None, **kwargs):
         if (
-                self.group is not None and
-                context.attributes.get(('undefer', self.group), False)
+                loadopt and self.group and
+                loadopt.local_opts.get('undefer_group', False) == self.group
             ) or (only_load_props and self.key in only_load_props):
             self.parent_property._get_strategy_by_cls(ColumnLoader).\
                             setup_query(context, entity,

@@ -422,8 +422,7 @@ class StrategizedProperty(MapperProperty):
 
     def _get_context_loader(self, context, path):
         load = None
-
-        search_path = path.path + (self,)
+        search_path = path.path + (self, )
         path_key = ("loader", search_path)
         if path_key in context.attributes:
             load = context.attributes[path_key]
@@ -448,7 +447,7 @@ class StrategizedProperty(MapperProperty):
 
     def setup(self, context, entity, path, adapter, **kwargs):
         loader = self._get_context_loader(context, path)
-        if loader:
+        if loader and loader.strategy:
             strat = self._get_strategy(loader.strategy)
         else:
             strat = self.strategy
@@ -456,7 +455,7 @@ class StrategizedProperty(MapperProperty):
 
     def create_row_processor(self, context, path, mapper, row, adapter):
         loader = self._get_context_loader(context, path)
-        if loader:
+        if loader and loader.strategy:
             strat = self._get_strategy(loader.strategy)
         else:
             strat = self.strategy
