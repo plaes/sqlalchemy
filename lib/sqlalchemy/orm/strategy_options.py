@@ -83,8 +83,8 @@ class Load(Generative, MapperOption):
                                 ext_info.mapper.base_mapper,
                                 ext_info.mapper, aliased=True,
                                 _use_mapper_path=True)
-                    path.entity_path[prop].set(self.context,
-                                        "path_with_polymorphic", inspect(ac))
+                path.entity_path[prop].set(self.context,
+                                    "path_with_polymorphic", inspect(ac))
                 path = path[prop][path_element]
             else:
                 path = path[prop]
