@@ -220,6 +220,7 @@ joinedload_all = public_factory(_UnboundLoad._joinedload_all, ".orm.joinedload_a
 contains_eager = public_factory(_UnboundLoad._contains_eager, ".orm.contains_eager")
 defer = public_factory(_UnboundLoad._defer, ".orm.defer")
 undefer = public_factory(_UnboundLoad._undefer, ".orm.undefer")
+load_only = public_factory(_UnboundLoad._load_only, ".orm.load_only")
 lazyload = public_factory(_UnboundLoad._lazyload, ".orm.lazyload")
 lazyload_all = public_factory(_UnboundLoad._lazyload_all, ".orm.lazyload_all")
 

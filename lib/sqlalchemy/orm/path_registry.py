@@ -116,9 +116,8 @@ class PathRegistry(object):
     def coerce(cls, raw):
         return util.reduce(lambda prev, next: prev[next], raw, cls.root)
 
-    @classmethod
-    def token(cls, token):
-        return TokenRegistry(cls.root, token)
+    def token(self, token):
+        return TokenRegistry(self, token)
 
     def __add__(self, other):
         return util.reduce(
@@ -218,24 +217,6 @@ class EntityRegistry(PathRegistry, dict):
             return self.path[entity]
         else:
             return dict.__getitem__(self, entity)
-
-    def _inlined_get_for(self, prop, context, key):
-        """an inlined version of:
-
-        cls = path[mapperproperty].get(context, key)
-
-        Skips the isinstance() check in __getitem__
-        and the extra method call for get().
-        Used by StrategizedProperty for its
-        very frequent lookup.
-
-        """
-        path = dict.__getitem__(self, prop)
-        path_key = (key, path.path)
-        if path_key in context.attributes:
-            return context.attributes[path_key]
-        else:
-            return None
 
     def __missing__(self, key):
         self[key] = item = PropRegistry(self, key)

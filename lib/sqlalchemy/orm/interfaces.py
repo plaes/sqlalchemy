@@ -420,20 +420,18 @@ class StrategizedProperty(MapperProperty):
 
     strategy_wildcard_key = None
 
-    @util.memoized_property
-    def _wildcard_path(self):
-        if self.strategy_wildcard_key:
-            return ('loader', (self.strategy_wildcard_key,))
-        else:
-            return None
-
     def _get_context_loader(self, context, path):
-        load = path._inlined_get_for(self, context, 'loader')
+        load = None
 
-        if not load:
-            wc_key = self._wildcard_path
-            if wc_key and wc_key in context.attributes:
-                load = context.attributes[wc_key]._loader_for_wildcard(self, path)
+        search_path = path.path + (self,)
+        path_key = ("loader", search_path)
+        if path_key in context.attributes:
+            load = context.attributes[path_key]
+        else:
+            search_path = path.path + (self.strategy_wildcard_key, )
+            path_key = ("loader", search_path)
+            if path_key in context.attributes:
+                load = context.attributes[path_key]
 
         return load
 
@@ -441,7 +439,6 @@ class StrategizedProperty(MapperProperty):
         try:
             return self._strategies[key]
         except KeyError:
-
             cls = self._strategy_lookup(*key)
             self._strategies[key] = self._strategies[cls] = strategy = cls(self)
             return strategy
@@ -452,7 +449,7 @@ class StrategizedProperty(MapperProperty):
     def setup(self, context, entity, path, adapter, **kwargs):
         loader = self._get_context_loader(context, path)
         if loader:
-            strat = loader.strategy_impl
+            strat = self._get_strategy(loader.strategy)
         else:
             strat = self.strategy
         strat.setup_query(context, entity, path, loader, adapter, **kwargs)
@@ -460,7 +457,7 @@ class StrategizedProperty(MapperProperty):
     def create_row_processor(self, context, path, mapper, row, adapter):
         loader = self._get_context_loader(context, path)
         if loader:
-            strat = loader.strategy_impl
+            strat = self._get_strategy(loader.strategy)
         else:
             strat = self.strategy
         return strat.create_row_processor(context, path, loader,

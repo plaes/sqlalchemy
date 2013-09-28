@@ -117,13 +117,6 @@ class Load(Generative, MapperOption):
         else:
             self.path.set(self.context, "loader", self)
 
-    @util.memoized_property
-    def strategy_impl(self):
-        if self.path.has_entity:
-            return self.path.parent.prop._get_strategy(self.strategy)
-        else:
-            return self.path.prop._get_strategy(self.strategy)
-
     def _loader_for_wildcard(self, prop, path):
         loader = self._generate()
         path = path[prop]
@@ -148,6 +141,15 @@ class Load(Generative, MapperOption):
                     attr,
                     None
                 )
+
+    def load_only(self, *attrs):
+        cloned = self._set_column_strategy(
+                    attrs,
+                    (("deferred", False), ("instrument", True))
+                )
+        cloned._set_column_strategy("*",
+                        (("deferred", True), ("instrument", True)))
+        return cloned
 
     def joinedload(self, attr, innerjoin=None):
         loader = self._set_strategy(
@@ -259,8 +261,8 @@ class _UnboundLoad(Load):
                     "mapper option expects "
                     "string key or list of attributes")
 
-        if entity is None:
-            return None
+        if not entity:
+            return
 
         path_element = entity.entity_zero
 
@@ -272,7 +274,8 @@ class _UnboundLoad(Load):
 
         path = loader.path
         for token in start_path:
-            loader.path = path = loader._generate_path(loader.path, token, None, raiseerr)
+            loader.path = path = loader._generate_path(
+                                        loader.path, token, None, raiseerr)
             if path is None:
                 return
 
@@ -294,9 +297,8 @@ class _UnboundLoad(Load):
     def _chop_path(self, to_chop, path):
         i = -1
         for i, (c_token, (p_mapper, p_prop)) in enumerate(zip(to_chop, path.pairs())):
-
             if isinstance(c_token, util.string_types):
-                if c_token != p_prop.key:
+                if c_token != 'relationship:*' and c_token != p_prop.key:
                     return None
             elif isinstance(c_token, PropComparator):
                 if c_token.property is not p_prop:
@@ -334,6 +336,14 @@ class _UnboundLoad(Load):
                 return None
 
     def _find_entity_basestring(self, query, token, raiseerr):
+        if token.endswith(':*'):
+            if len(list(query._mapper_entities)) != 1:
+                if raiseerr:
+                    raise sa_exc.ArgumentError(
+                            "Wildcard loader can only be used with exactly "
+                            "one entity.  Use Load(ent) to specify "
+                            "specific entities.")
+
         for ent in query._mapper_entities:
             # return only the first _MapperEntity when searching
             # based on string prop name.   Ideally object
@@ -498,6 +508,13 @@ class _UnboundLoad(Load):
 
         """
         return cls._from_keys(cls.lazyload, keys, True, {})
+
+    @classmethod
+    def _load_only(cls, *attrs):
+        """Load only column attributes *attrs; all other column attributes
+        are set as deferred."""
+        return _UnboundLoad().load_only(*attrs)
+
 
     @classmethod
     def _defer(cls, *key):
