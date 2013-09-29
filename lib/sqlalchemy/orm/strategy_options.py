@@ -14,6 +14,7 @@ from ..sql.base import _generative, Generative
 from .. import exc as sa_exc, inspect
 from .base import _is_aliased_class, _class_to_mapper
 from . import util as orm_util
+from .path_registry import PathRegistry
 
 class Load(Generative, MapperOption):
     def __init__(self, entity):
@@ -122,6 +123,15 @@ class Load(Generative, MapperOption):
             self.path.parent.set(self.context, "loader", self)
         else:
             self.path.set(self.context, "loader", self)
+
+    def __getstate__(self):
+        d = self.__dict__.copy()
+        d["path"] = self.path.serialize()
+        return d
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.path = PathRegistry.deserialize(self.path)
 
     def defer(self, *attrs):
         return self._set_column_strategy(
@@ -234,6 +244,27 @@ class _UnboundLoad(Load):
             attr = "%s:*" % wildcard_key
 
         return path + (attr, )
+
+    def __getstate__(self):
+        d = self.__dict__.copy()
+        d['path'] = ret = []
+        for token in util.to_list(self.path):
+            if isinstance(token, PropComparator):
+                ret.append((token._parentmapper.class_, token.key))
+            else:
+                ret.append(token)
+        return d
+
+    def __setstate__(self, state):
+        ret = []
+        for key in state['path']:
+            if isinstance(key, tuple):
+                cls, propkey = key
+                ret.append(getattr(cls, propkey))
+            else:
+                ret.append(key)
+        state['path'] = tuple(ret)
+        self.__dict__ = state
 
     def _process(self, query, raiseerr):
         for val in self._to_bind:
