@@ -14,7 +14,8 @@ from ..sql.base import _generative, Generative
 from .. import exc as sa_exc, inspect
 from .base import _is_aliased_class, _class_to_mapper
 from . import util as orm_util
-from .path_registry import PathRegistry, TokenRegistry
+from .path_registry import PathRegistry, TokenRegistry, \
+        _WILDCARD_TOKEN, _DEFAULT_TOKEN
 
 class Load(Generative, MapperOption):
     def __init__(self, entity):
@@ -43,7 +44,8 @@ class Load(Generative, MapperOption):
     def _generate_path(self, path, attr, wildcard_key, raiseerr=True):
         if raiseerr and not path.has_entity:
             if isinstance(path, TokenRegistry):
-                raise sa_exc.ArgumentError("Wildcard token cannot be followed by another entity")
+                raise sa_exc.ArgumentError(
+                        "Wildcard token cannot be followed by another entity")
             else:
                 raise sa_exc.ArgumentError(
                     "Attribute '%s' of entity '%s' does not "
@@ -52,9 +54,10 @@ class Load(Generative, MapperOption):
                 )
 
         if isinstance(attr, util.string_types):
-            if attr.endswith('*') or attr.endswith("_sa_default"):
+            if attr.endswith(_WILDCARD_TOKEN) or attr.endswith(_DEFAULT_TOKEN):
                 if wildcard_key:
                     attr = "%s:%s" % (wildcard_key, attr)
+                self.propagate_to_loaders = False
                 return path.token(attr)
 
             try:
@@ -103,12 +106,10 @@ class Load(Generative, MapperOption):
 
     @_generative
     def _set_strategy(self, attr, strategy, propagate_to_loaders=True):
+        self.propagate_to_loaders = propagate_to_loaders
+        # if the path is a wildcard, this will set propagate_to_loaders=False
         self.path = self._generate_path(self.path, attr, "relationship")
         self.strategy = strategy
-        if isinstance(attr, util.string_types) and attr.endswith("_sa_default"):
-            self.propagate_to_loaders = False
-        else:
-            self.propagate_to_loaders = propagate_to_loaders
         if strategy is not None:
             self._set_path_strategy()
 
@@ -174,40 +175,25 @@ class Load(Generative, MapperOption):
                         )
 
     def joinedload(self, attr, innerjoin=None):
-        loader = self._set_strategy(
-                    attr,
-                    (("lazy", "joined"),)
-                )
+        loader = self._set_strategy(attr, (("lazy", "joined"),))
         if innerjoin is not None:
             loader.local_opts['innerjoin'] = innerjoin
         return loader
 
     def subqueryload(self, attr):
-        loader = self._set_strategy(
-                    attr,
-                    (("lazy", "subquery"),)
-                )
+        loader = self._set_strategy(attr, (("lazy", "subquery"),))
         return loader
 
     def lazyload(self, attr):
-        loader = self._set_strategy(
-                    attr,
-                    (("lazy", "select"),)
-                )
+        loader = self._set_strategy(attr, (("lazy", "select"),))
         return loader
 
     def immediateload(self, attr):
-        loader = self._set_strategy(
-                    attr,
-                    (("lazy", "immediate"),)
-                )
+        loader = self._set_strategy(attr, (("lazy", "immediate"),))
         return loader
 
     def noload(self, attr):
-        loader = self._set_strategy(
-                    attr,
-                    (("lazy", "noload"),)
-                )
+        loader = self._set_strategy(attr, (("lazy", "noload"),))
         return loader
 
     def contains_eager(self, attr, alias=None):
@@ -247,8 +233,9 @@ class _UnboundLoad(Load):
 
     def _generate_path(self, path, attr, wildcard_key):
         if wildcard_key and isinstance(attr, util.string_types) and \
-                attr in ('*', '_sa_default'):
+                attr in (_WILDCARD_TOKEN, _DEFAULT_TOKEN):
             attr = "%s:%s" % (wildcard_key, attr)
+            self.propagate_to_loaders = False
 
         return path + (attr, )
 
@@ -283,9 +270,11 @@ class _UnboundLoad(Load):
 
         def _split_key(key):
             if isinstance(key, util.string_types):
-                if key == '*':
-                    return ("_sa_default", )
-                elif key.startswith(".*"):
+                # coerce fooload('*') into "default loader strategy"
+                if key == _WILDCARD_TOKEN:
+                    return (_DEFAULT_TOKEN, )
+                # coerce fooload(".*") into "wildcard on default entity"
+                elif key.startswith("." + _WILDCARD_TOKEN):
                     key = key[1:]
                 return key.split(".")
             else:
@@ -369,9 +358,9 @@ class _UnboundLoad(Load):
         i = -1
         for i, (c_token, (p_mapper, p_prop)) in enumerate(zip(to_chop, path.pairs())):
             if isinstance(c_token, util.string_types):
-                if i == 0 and c_token.endswith(':_sa_default'):
+                if i == 0 and c_token.endswith(':' + _DEFAULT_TOKEN):
                     return to_chop
-                elif c_token != 'relationship:*' and c_token != p_prop.key:
+                elif c_token != 'relationship:%s' % (_WILDCARD_TOKEN,) and c_token != p_prop.key:
                     return None
             elif isinstance(c_token, PropComparator):
                 if c_token.property is not p_prop:
@@ -409,7 +398,7 @@ class _UnboundLoad(Load):
                 return None
 
     def _find_entity_basestring(self, query, token, raiseerr):
-        if token.endswith(':*'):
+        if token.endswith(':' + _WILDCARD_TOKEN):
             if len(list(query._mapper_entities)) != 1:
                 if raiseerr:
                     raise sa_exc.ArgumentError(

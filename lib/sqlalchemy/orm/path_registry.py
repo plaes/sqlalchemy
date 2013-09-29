@@ -16,6 +16,10 @@ from .base import class_mapper
 def _unreduce_path(path):
     return PathRegistry.deserialize(path)
 
+
+_WILDCARD_TOKEN = "*"
+_DEFAULT_TOKEN = "_sa_default"
+
 class PathRegistry(object):
     """Represent query load paths and registry functions.
 
@@ -118,9 +122,9 @@ class PathRegistry(object):
         return util.reduce(lambda prev, next: prev[next], raw, cls.root)
 
     def token(self, token):
-        if token.endswith(':*'):
+        if token.endswith(':' + _WILDCARD_TOKEN):
             return TokenRegistry(self, token)
-        elif token.endswith(':_sa_default'):
+        elif token.endswith(":" + _DEFAULT_TOKEN):
             return TokenRegistry(self.root, token)
         else:
             raise exc.ArgumentError("invalid token: %s" % token)
@@ -143,6 +147,7 @@ class RootRegistry(PathRegistry):
     has_entity = False
     def __getitem__(self, entity):
         return entity._path_registry
+
 PathRegistry.root = RootRegistry()
 
 class TokenRegistry(PathRegistry):
@@ -155,11 +160,6 @@ class TokenRegistry(PathRegistry):
 
     def __getitem__(self, entity):
         raise NotImplementedError()
-
-    @property
-    def key(self):
-        return self.token
-
 
 class PropRegistry(PathRegistry):
     def __init__(self, parent, prop):
@@ -178,11 +178,6 @@ class PropRegistry(PathRegistry):
         self.parent = parent
         self.path = parent.path + (prop,)
 
-    @property
-    def key(self):
-        return self.prop.key
-
-
     @util.memoized_property
     def has_entity(self):
         return hasattr(self.prop, "mapper")
@@ -192,17 +187,29 @@ class PropRegistry(PathRegistry):
         return self.prop.mapper
 
     @util.memoized_property
-    def wildcard_path(self):
+    def _wildcard_path_loader_key(self):
         """Given a path (mapper A, prop X), replace the prop with the wildcard,
-        e.g. (mapper A, 'relationship:.*') or (mapper A, 'column:.*').
+        e.g. (mapper A, 'relationship:.*') or (mapper A, 'column:.*'), then
+        return within the ("loader", path) structure.
 
         """
-        return self.parent.token("%s:*" % self.prop.strategy_wildcard_key)
+        return ("loader",
+                self.parent.token(
+                    "%s:%s" % (self.prop.strategy_wildcard_key, _WILDCARD_TOKEN)
+                    ).path
+                )
 
     @util.memoized_property
-    def default_path(self):
-        return self.parent.token("%s:_sa_default" % self.prop.strategy_wildcard_key)
+    def _default_path_loader_key(self):
+        return ("loader",
+                self.parent.token(
+                    "%s:%s" % (self.prop.strategy_wildcard_key, _DEFAULT_TOKEN)
+                    ).path
+                )
 
+    @util.memoized_property
+    def _loader_key(self):
+        return ("loader", self.path)
 
     @property
     def mapper(self):

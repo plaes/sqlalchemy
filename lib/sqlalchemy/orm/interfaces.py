@@ -426,20 +426,17 @@ class StrategizedProperty(MapperProperty):
         # use EntityRegistry.__getitem__()->PropRegistry here so
         # that the path is stated in terms of our base
         search_path = dict.__getitem__(path, self)
-        path_key = ("loader", search_path.path)
-        if path_key in context.attributes:
-            load = context.attributes[path_key]
-        else:
-            wc_path = search_path.wildcard_path
-            path_key = ("loader", wc_path.path)
+
+        # search among: exact match, "attr.*", "default" strategy
+        # if any.
+        for path_key in (
+                        search_path._loader_key,
+                        search_path._wildcard_path_loader_key,
+                        search_path._default_path_loader_key
+                    ):
             if path_key in context.attributes:
                 load = context.attributes[path_key]
-            else:
-                default_path = search_path.default_path
-                path_key = ("loader", default_path.path)
-                if path_key in context.attributes:
-                    load = context.attributes[path_key]
-
+                break
 
         return load
 
