@@ -9,6 +9,7 @@
 
 from .. import inspection
 from .. import util
+from .. import exc
 from itertools import chain
 from .base import class_mapper
 
@@ -117,7 +118,12 @@ class PathRegistry(object):
         return util.reduce(lambda prev, next: prev[next], raw, cls.root)
 
     def token(self, token):
-        return TokenRegistry(self, token)
+        if token.endswith(':*'):
+            return TokenRegistry(self, token)
+        elif token.endswith(':_sa_default'):
+            return TokenRegistry(self.root, token)
+        else:
+            raise exc.ArgumentError("invalid token: %s" % token)
 
     def __add__(self, other):
         return util.reduce(
@@ -188,10 +194,15 @@ class PropRegistry(PathRegistry):
     @util.memoized_property
     def wildcard_path(self):
         """Given a path (mapper A, prop X), replace the prop with the wildcard,
-        e.g. (mapper A, 'relationship:*') or (mapper A, 'column:*').
+        e.g. (mapper A, 'relationship:.*') or (mapper A, 'column:.*').
 
         """
-        return self.parent.token(self.prop.strategy_wildcard_key)
+        return self.parent.token("%s:*" % self.prop.strategy_wildcard_key)
+
+    @util.memoized_property
+    def default_path(self):
+        return self.parent.token("%s:_sa_default" % self.prop.strategy_wildcard_key)
+
 
     @property
     def mapper(self):

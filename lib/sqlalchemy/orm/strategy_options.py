@@ -14,7 +14,7 @@ from ..sql.base import _generative, Generative
 from .. import exc as sa_exc, inspect
 from .base import _is_aliased_class, _class_to_mapper
 from . import util as orm_util
-from .path_registry import PathRegistry
+from .path_registry import PathRegistry, TokenRegistry
 
 class Load(Generative, MapperOption):
     def __init__(self, entity):
@@ -42,16 +42,19 @@ class Load(Generative, MapperOption):
 
     def _generate_path(self, path, attr, wildcard_key, raiseerr=True):
         if raiseerr and not path.has_entity:
-            raise sa_exc.ArgumentError(
-                "Attribute '%s' of entity '%s' does not "
-                "refer to a mapped entity" %
-                (path.key, path.parent.entity)
-            )
+            if isinstance(path, TokenRegistry):
+                raise sa_exc.ArgumentError("Wildcard token cannot be followed by another entity")
+            else:
+                raise sa_exc.ArgumentError(
+                    "Attribute '%s' of entity '%s' does not "
+                    "refer to a mapped entity" %
+                    (path.prop.key, path.parent.entity)
+                )
 
         if isinstance(attr, util.string_types):
-            if attr.endswith('*'):
+            if attr.endswith('*') or attr.endswith("_sa_default"):
                 if wildcard_key:
-                    attr = "%s:*" % wildcard_key
+                    attr = "%s:%s" % (wildcard_key, attr)
                 return path.token(attr)
 
             try:
@@ -102,7 +105,10 @@ class Load(Generative, MapperOption):
     def _set_strategy(self, attr, strategy, propagate_to_loaders=True):
         self.path = self._generate_path(self.path, attr, "relationship")
         self.strategy = strategy
-        self.propagate_to_loaders = propagate_to_loaders
+        if isinstance(attr, util.string_types) and attr.endswith("_sa_default"):
+            self.propagate_to_loaders = False
+        else:
+            self.propagate_to_loaders = propagate_to_loaders
         if strategy is not None:
             self._set_path_strategy()
 
@@ -240,8 +246,9 @@ class _UnboundLoad(Load):
         self._to_bind.add(self)
 
     def _generate_path(self, path, attr, wildcard_key):
-        if wildcard_key and isinstance(attr, util.string_types) and attr == '*':
-            attr = "%s:*" % wildcard_key
+        if wildcard_key and isinstance(attr, util.string_types) and \
+                attr in ('*', '_sa_default'):
+            attr = "%s:%s" % (wildcard_key, attr)
 
         return path + (attr, )
 
@@ -276,6 +283,10 @@ class _UnboundLoad(Load):
 
         def _split_key(key):
             if isinstance(key, util.string_types):
+                if key == '*':
+                    return ("_sa_default", )
+                elif key.startswith(".*"):
+                    key = key[1:]
                 return key.split(".")
             else:
                 return (key,)
@@ -298,6 +309,7 @@ class _UnboundLoad(Load):
         start_path = self.path
         # _current_path implies we're in a
         # secondary load with an existing path
+
         current_path = query._current_path
         if current_path:
             start_path = self._chop_path(start_path, current_path)
@@ -357,7 +369,9 @@ class _UnboundLoad(Load):
         i = -1
         for i, (c_token, (p_mapper, p_prop)) in enumerate(zip(to_chop, path.pairs())):
             if isinstance(c_token, util.string_types):
-                if c_token != 'relationship:*' and c_token != p_prop.key:
+                if i == 0 and c_token.endswith(':_sa_default'):
+                    return to_chop
+                elif c_token != 'relationship:*' and c_token != p_prop.key:
                     return None
             elif isinstance(c_token, PropComparator):
                 if c_token.property is not p_prop:

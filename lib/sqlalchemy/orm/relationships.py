@@ -83,7 +83,7 @@ class RelationshipProperty(StrategizedProperty):
 
     """
 
-    strategy_wildcard_key = 'relationship:*'
+    strategy_wildcard_key = 'relationship'
 
     _dependency_processor = None
 
