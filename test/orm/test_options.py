@@ -2,7 +2,7 @@ from sqlalchemy import inspect
 from sqlalchemy.orm import attributes, mapper, relationship, backref, \
     configure_mappers, create_session, synonym, Session, class_mapper, \
     aliased, column_property, joinedload_all, joinedload, Query,\
-    util as orm_util
+    util as orm_util, Load
 import sqlalchemy as sa
 from sqlalchemy import testing
 from sqlalchemy.testing.assertions import eq_, assert_raises, assert_raises_message
@@ -17,16 +17,7 @@ class QueryTest(_fixtures.FixtureTest):
     def setup_mappers(cls):
         cls._setup_stock_mapping()
 
-class OptionsTest(QueryTest):
-    """Test the _process_paths() method of PropertyOption."""
-
-    def _option_fixture(self, *arg):
-        from sqlalchemy.orm import strategy_options
-
-        return strategy_options._UnboundLoad._from_keys(
-                    strategy_options._UnboundLoad.joinedload, arg, True, {})
-
-
+class PathTest(object):
     def _make_path(self, path):
         r = []
         for i, item in enumerate(path):
@@ -54,6 +45,120 @@ class OptionsTest(QueryTest):
             set([p for p in assert_paths]),
             set([self._make_path(p) for p in paths])
         )
+
+class LoadTest(PathTest, QueryTest):
+
+    def test_gen_path_attr_entity(self):
+        User = self.classes.User
+        Address = self.classes.Address
+
+        l = Load(User)
+        eq_(
+            l._generate_path(inspect(User)._path_registry, User.addresses, "relationship"),
+            self._make_path_registry([User, "addresses", Address])
+        )
+
+    def test_gen_path_attr_column(self):
+        User = self.classes.User
+
+        l = Load(User)
+        eq_(
+            l._generate_path(inspect(User)._path_registry, User.name, "column"),
+            self._make_path_registry([User, "name"])
+        )
+
+    def test_gen_path_string_entity(self):
+        User = self.classes.User
+        Address = self.classes.Address
+
+        l = Load(User)
+        eq_(
+            l._generate_path(inspect(User)._path_registry, "addresses", "relationship"),
+            self._make_path_registry([User, "addresses", Address])
+        )
+
+    def test_gen_path_string_column(self):
+        User = self.classes.User
+
+        l = Load(User)
+        eq_(
+            l._generate_path(inspect(User)._path_registry, "name", "column"),
+            self._make_path_registry([User, "name"])
+        )
+
+    def test_gen_path_invalid_from_col(self):
+        User = self.classes.User
+
+        l = Load(User)
+        l.path = self._make_path_registry([User, "name"])
+        assert_raises_message(
+            sa.exc.ArgumentError,
+            "Attribute 'name' of entity 'Mapper|User|users' does "
+                "not refer to a mapped entity",
+            l._generate_path, l.path, User.addresses, "relationship"
+
+        )
+    def test_gen_path_attr_entity_invalid_raiseerr(self):
+        User = self.classes.User
+        Order = self.classes.Order
+
+        l = Load(User)
+
+        assert_raises_message(
+            sa.exc.ArgumentError,
+            "Attribute 'Order.items' does not link from element 'Mapper|User|users'",
+            l._generate_path,
+            inspect(User)._path_registry, Order.items, "relationship",
+        )
+
+    def test_gen_path_attr_entity_invalid_noraiseerr(self):
+        User = self.classes.User
+        Order = self.classes.Order
+
+        l = Load(User)
+
+        eq_(
+            l._generate_path(
+                inspect(User)._path_registry, Order.items, "relationship", False
+            ),
+            None
+        )
+
+    def test_set_strat_ent(self):
+        User = self.classes.User
+
+        l1 = Load(User)
+        l2 = l1.joinedload("addresses")
+        eq_(
+            l1.context,
+            {
+                ('loader', self._make_path([User, "addresses"])): l2
+            }
+        )
+
+    def test_set_strat_col(self):
+        User = self.classes.User
+
+        l1 = Load(User)
+        l2 = l1.defer("name")
+        l3 = l2.context.values()[0]
+        eq_(
+            l1.context,
+            {
+                ('loader', self._make_path([User, "name"])): l3
+            }
+        )
+
+
+class OptionsTest(PathTest, QueryTest):
+
+    def _option_fixture(self, *arg):
+        from sqlalchemy.orm import strategy_options
+
+        return strategy_options._UnboundLoad._from_keys(
+                    strategy_options._UnboundLoad.joinedload, arg, True, {})
+
+
 
     def test_get_path_one_level_string(self):
         User = self.classes.User

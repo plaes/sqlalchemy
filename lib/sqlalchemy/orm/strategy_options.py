@@ -133,9 +133,12 @@ class Load(Generative, MapperOption):
         else:
             prop = attr.property
 
-            if raiseerr and not prop.parent.common_parent(path.mapper):
-                raise sa_exc.ArgumentError("Attribute '%s' does not "
+            if not prop.parent.common_parent(path.mapper):
+                if raiseerr:
+                    raise sa_exc.ArgumentError("Attribute '%s' does not "
                             "link from element '%s'" % (attr, path.entity))
+                else:
+                    return None
 
             if getattr(attr, '_of_type', None):
                 ac = attr._of_type
@@ -158,7 +161,7 @@ class Load(Generative, MapperOption):
         return path
 
     def _coerce_strat(self, strategy):
-        if isinstance(strategy, dict):
+        if strategy is not None:
             strategy = tuple(strategy.items())
         return strategy
 

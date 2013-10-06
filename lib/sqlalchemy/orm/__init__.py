@@ -233,6 +233,8 @@ immediateload = strategy_options.immediateload._unbound_fn
 noload = strategy_options.noload._unbound_fn
 defaultload = strategy_options.defaultload._unbound_fn
 
+from .strategy_options import Load
+
 def eagerload(*args, **kwargs):
     """A synonym for :func:`joinedload()`."""
     return joinedload(*args, **kwargs)
