@@ -488,6 +488,10 @@ def contains_eager(loadopt, attr, alias=None):
                 join((user_alias, Order.user)).\\
                 options(contains_eager(Order.user, alias=user_alias))
 
+    .. seealso::
+
+        :ref:`contains_eager`
+
     """
     if alias is not None:
         if not isinstance(alias, str):
@@ -585,13 +589,13 @@ def joinedload(loadopt, attr, innerjoin=None):
 
         To produce a specific SQL JOIN which is explicitly available, use
         :class:`.Query.join`.   To combine explicit JOINs with eager loading
-        of collections, use :func:`.orm.contains_eager`.
+        of collections, use :func:`.orm.contains_eager`; see :ref:`contains_eager`.
 
     .. seealso::
 
         :ref:`loading_toplevel`
 
-        :func:`.orm.contains_eager`
+        :ref:`contains_eager`
 
         :func:`.orm.subqueryload`
 
@@ -741,8 +745,8 @@ def defaultload(loadopt, attr):
             )
 
 @defaultload._add_unbound_fn
-def defaultload(key):
-    return _UnboundLoad._from_keys(_UnboundLoad.defaultload, key, False, {})
+def defaultload(*keys):
+    return _UnboundLoad._from_keys(_UnboundLoad.defaultload, keys, False, {})
 
 @loader_option()
 def defer(loadopt, key, *addl_attrs):
@@ -770,6 +774,18 @@ def defer(loadopt, key, *addl_attrs):
     for a link unchanged, use :func:`.orm.defaultload`::
 
         session.query(MyClass).options(defaultload("someattr").defer("some_column"))
+
+    A :class:`.Load` object that is present on a certain path can have
+    :meth:`.Load.defer` called multiple times, each will operate on the same
+    parent entity::
+
+
+        session.query(MyClass).options(
+                        defaultload("someattr").
+                            defer("some_column").
+                            defer("some_other_column").
+                            defer("another_column")
+            )
 
     :param key: Attribute to be deferred.
 
@@ -804,6 +820,14 @@ def undefer(loadopt, key, *addl_attrs):
 
     This function is part of the :class:`.Load` interface and supports
     both method-chained and standalone operation.
+
+    Examples::
+
+        # undefer two columns
+        session.query(MyClass).options(undefer("col1"), undefer("col2"))
+
+        # undefer all columns specific to a single class using Load + *
+        session.query(MyClass, MyOtherClass).options(Load(MyClass).undefer("*"))
 
     :param key: Attribute to be undeferred.
 

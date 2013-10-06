@@ -2,7 +2,7 @@ import sqlalchemy as sa
 from sqlalchemy import testing, util
 from sqlalchemy.orm import mapper, deferred, defer, undefer, Load, \
     load_only, undefer_group, create_session, synonym, relationship, Session,\
-    joinedload
+    joinedload, defaultload
 from sqlalchemy.testing import eq_, AssertsCompiledSQL
 from test.orm import _fixtures
 
@@ -298,6 +298,26 @@ class DeferredOptionsTest(AssertsCompiledSQL, _fixtures.FixtureTest):
              "FROM orders ORDER BY orders.id",
              {})])
 
+    def test_undefer_star(self):
+        orders, Order = self.tables.orders, self.classes.Order
+
+        mapper(Order, orders, properties=util.OrderedDict([
+            ('userident', deferred(orders.c.user_id)),
+            ('description', deferred(orders.c.description)),
+            ('opened', deferred(orders.c.isopen))
+            ]
+        ))
+
+        sess = create_session()
+        q = sess.query(Order).options(Load(Order).undefer('*'))
+        self.assert_compile(q,
+            "SELECT orders.user_id AS orders_user_id, "
+            "orders.description AS orders_description, "
+            "orders.isopen AS orders_isopen, "
+            "orders.id AS orders_id, "
+            "orders.address_id AS orders_address_id FROM orders"
+            )
+
     def test_locates_col(self):
         """Manually adding a column to the result undefers the column."""
 
@@ -353,6 +373,26 @@ class DeferredOptionsTest(AssertsCompiledSQL, _fixtures.FixtureTest):
             eq_(item.description, 'item 4')
         self.sql_count_(0, go)
         eq_(item.description, 'item 4')
+
+    def test_chained_multi_col_options(self):
+        users, User = self.tables.users, self.classes.User
+        orders, Order = self.tables.orders, self.classes.Order
+
+        mapper(User, users, properties={
+                "orders": relationship(Order)
+            })
+        mapper(Order, orders)
+
+        sess = create_session()
+        q = sess.query(User).options(
+                joinedload(User.orders).defer("description").defer("isopen")
+            )
+        self.assert_compile(q,
+            "SELECT users.id AS users_id, users.name AS users_name, "
+            "orders_1.id AS orders_1_id, orders_1.user_id AS orders_1_user_id, "
+            "orders_1.address_id AS orders_1_address_id FROM users "
+            "LEFT OUTER JOIN orders AS orders_1 ON users.id = orders_1.user_id"
+            )
 
     def test_load_only(self):
         orders, Order = self.tables.orders, self.classes.Order
@@ -418,8 +458,8 @@ class DeferredOptionsTest(AssertsCompiledSQL, _fixtures.FixtureTest):
         orders = self.tables.orders
 
         mapper(User, users, properties={
-                "addresses": relationship(Address),
-                "orders": relationship(Order)
+                "addresses": relationship(Address, lazy="joined"),
+                "orders": relationship(Order, lazy="joined")
             })
         mapper(Address, addresses)
         mapper(Order, orders)
@@ -427,8 +467,8 @@ class DeferredOptionsTest(AssertsCompiledSQL, _fixtures.FixtureTest):
         sess = create_session()
 
         q = sess.query(User).options(
-                load_only("name").joinedload("addresses").load_only("id", "email_address"),
-                joinedload("orders").load_only("id")
+                load_only("name").defaultload("addresses").load_only("id", "email_address"),
+                defaultload("orders").load_only("id")
             )
 
         # hmmmm joinedload seems to be forcing users.id into here...

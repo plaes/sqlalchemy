@@ -456,6 +456,45 @@ class OptionsTest(PathTest, QueryTest):
                 )
         self._assert_path_result(opt, q, [])
 
+    def test_chained(self):
+        User = self.classes.User
+        Order = self.classes.Order
+        Item = self.classes.Item
+        sess = Session()
+        q = sess.query(User)
+        opt = self._option_fixture(User.orders).joinedload("items")
+        self._assert_path_result(opt, q, [
+                (User, 'orders'),
+                (User, 'orders', Order, "items")
+            ])
+
+    def test_chained_plus_dotted(self):
+        User = self.classes.User
+        Order = self.classes.Order
+        Item = self.classes.Item
+        sess = Session()
+        q = sess.query(User)
+        opt = self._option_fixture("orders.items").joinedload("keywords")
+        self._assert_path_result(opt, q, [
+                (User, 'orders'),
+                (User, 'orders', Order, "items"),
+                (User, 'orders', Order, "items", Item, "keywords")
+            ])
+
+    def test_chained_plus_multi(self):
+        User = self.classes.User
+        Order = self.classes.Order
+        Item = self.classes.Item
+        sess = Session()
+        q = sess.query(User)
+        opt = self._option_fixture(User.orders, Order.items).joinedload("keywords")
+        self._assert_path_result(opt, q, [
+                (User, 'orders'),
+                (User, 'orders', Order, "items"),
+                (User, 'orders', Order, "items", Item, "keywords")
+            ])
+
+
 class OptionsNoPropTest(_fixtures.FixtureTest):
     """test the error messages emitted when using property
     options in conjunection with column-only entities, or
