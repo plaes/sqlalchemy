@@ -87,7 +87,7 @@ def _register_attribute(strategy, mapper, useobject,
             for hook in listen_hooks:
                 hook(desc, prop)
 
-@properties.ColumnProperty._strategy_for(dict(instrument=False, deferred=False))
+@properties.ColumnProperty.strategy_for(instrument=False, deferred=False)
 class UninstrumentedColumnLoader(LoaderStrategy):
     """Represent the a non-instrumented MapperProperty.
 
@@ -111,7 +111,7 @@ class UninstrumentedColumnLoader(LoaderStrategy):
 
 
 @log.class_logger
-@properties.ColumnProperty._strategy_for(dict(instrument=True, deferred=False))
+@properties.ColumnProperty.strategy_for(instrument=True, deferred=False)
 class ColumnLoader(LoaderStrategy):
     """Provide loading behavior for a :class:`.ColumnProperty`."""
 
@@ -159,7 +159,7 @@ class ColumnLoader(LoaderStrategy):
 
 
 @log.class_logger
-@properties.ColumnProperty._strategy_for(dict(deferred=True, instrument=True))
+@properties.ColumnProperty.strategy_for(deferred=True, instrument=True)
 class DeferredColumnLoader(LoaderStrategy):
     """Provide loading behavior for a deferred :class:`.ColumnProperty`."""
 
@@ -281,7 +281,8 @@ class AbstractRelationshipLoader(LoaderStrategy):
 
 
 @log.class_logger
-@properties.RelationshipProperty._strategy_for(dict(lazy=None), dict(lazy="noload"))
+@properties.RelationshipProperty.strategy_for(lazy="noload")
+@properties.RelationshipProperty.strategy_for(lazy=None)
 class NoLoader(AbstractRelationshipLoader):
     """Provide loading behavior for a :class:`.RelationshipProperty`
     with "lazy=None".
@@ -305,7 +306,8 @@ class NoLoader(AbstractRelationshipLoader):
 
 
 @log.class_logger
-@properties.RelationshipProperty._strategy_for(dict(lazy=True), dict(lazy="select"))
+@properties.RelationshipProperty.strategy_for(lazy=True)
+@properties.RelationshipProperty.strategy_for(lazy="select")
 class LazyLoader(AbstractRelationshipLoader):
     """Provide loading behavior for a :class:`.RelationshipProperty`
     with "lazy=True", that is loads when first accessed.
@@ -624,7 +626,7 @@ class LoadLazyAttribute(object):
         return strategy._load_for_state(state, passive)
 
 
-@properties.RelationshipProperty._strategy_for(dict(lazy="immediate"))
+@properties.RelationshipProperty.strategy_for(lazy="immediate")
 class ImmediateLoader(AbstractRelationshipLoader):
     def init_class_attribute(self, mapper):
         self.parent_property.\
@@ -645,7 +647,7 @@ class ImmediateLoader(AbstractRelationshipLoader):
 
 
 @log.class_logger
-@properties.RelationshipProperty._strategy_for(dict(lazy="subquery"))
+@properties.RelationshipProperty.strategy_for(lazy="subquery")
 class SubqueryLoader(AbstractRelationshipLoader):
     def __init__(self, parent):
         super(SubqueryLoader, self).__init__(parent)
@@ -965,7 +967,8 @@ class SubqueryLoader(AbstractRelationshipLoader):
 
 
 @log.class_logger
-@properties.RelationshipProperty._strategy_for(dict(lazy=False), dict(lazy="joined"))
+@properties.RelationshipProperty.strategy_for(lazy="joined")
+@properties.RelationshipProperty.strategy_for(lazy=False)
 class JoinedLoader(AbstractRelationshipLoader):
     """Provide loading behavior for a :class:`.RelationshipProperty`
     using joined eager loading.

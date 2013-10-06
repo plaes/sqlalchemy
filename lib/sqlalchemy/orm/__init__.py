@@ -213,11 +213,12 @@ def clear_mappers():
     finally:
         mapperlib._CONFIGURE_MUTEX.release()
 
+from . import strategy_options
 from .strategy_options import _UnboundLoad
 
-joinedload = public_factory(_UnboundLoad._joinedload, ".orm.joinedload")
-joinedload_all = public_factory(_UnboundLoad._joinedload_all, ".orm.joinedload_all")
-contains_eager = public_factory(_UnboundLoad._contains_eager, ".orm.contains_eager")
+joinedload = strategy_options.joinedload._unbound_fn
+joinedload_all = strategy_options.joinedload._unbound_all_fn
+contains_eager = strategy_options.contains_eager._unbound_fn
 defer = public_factory(_UnboundLoad._defer, ".orm.defer")
 undefer = public_factory(_UnboundLoad._undefer, ".orm.undefer")
 undefer_group = public_factory(_UnboundLoad._undefer_group, ".orm.undefer_group")

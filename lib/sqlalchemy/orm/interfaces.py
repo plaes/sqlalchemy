@@ -481,13 +481,12 @@ class StrategizedProperty(MapperProperty):
     _strategies = collections.defaultdict(dict)
 
     @classmethod
-    def _strategy_for(cls, *keys):
+    def strategy_for(cls, **kw):
         def decorate(dec_cls):
             dec_cls._strategy_keys = []
-            for key in keys:
-                key = tuple(sorted(key.items()))
-                cls._strategies[cls][key] = dec_cls
-                dec_cls._strategy_keys.append(key)
+            key = tuple(sorted(kw.items()))
+            cls._strategies[cls][key] = dec_cls
+            dec_cls._strategy_keys.append(key)
             return dec_cls
         return decorate
 
