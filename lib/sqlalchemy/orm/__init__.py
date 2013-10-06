@@ -148,19 +148,22 @@ def backref(name, **kwargs):
     return (name, kwargs)
 
 
-def deferred(*columns, **kwargs):
-    """Return a :class:`.DeferredColumnProperty`, which indicates this
-    object attributes should only be loaded from its corresponding
-    table column when first accessed.
+def deferred(*columns, **kw):
+    """Indicate a column-based mapped attribute that by default will
+    not load unless accessed.
 
-    Used with the "properties" dictionary sent to :func:`mapper`.
+    :param \*columns: columns to be mapped.  This is typically a single
+     :class:`.Column` object, however a collection is supported in order
+     to support multiple columns mapped under the same attribute.
 
-    See also:
+    :param \**kw: additional keyword arguments passed to :class:`.ColumnProperty`.
 
-    :ref:`deferred`
+    .. seealso::
+
+        :ref:`deferred`
 
     """
-    return ColumnProperty(deferred=True, *columns, **kwargs)
+    return ColumnProperty(deferred=True, *columns, **kw)
 
 
 mapper = public_factory(Mapper, ".orm.mapper")
@@ -214,21 +217,21 @@ def clear_mappers():
         mapperlib._CONFIGURE_MUTEX.release()
 
 from . import strategy_options
-from .strategy_options import _UnboundLoad
 
 joinedload = strategy_options.joinedload._unbound_fn
 joinedload_all = strategy_options.joinedload._unbound_all_fn
 contains_eager = strategy_options.contains_eager._unbound_fn
-defer = public_factory(_UnboundLoad._defer, ".orm.defer")
-undefer = public_factory(_UnboundLoad._undefer, ".orm.undefer")
-undefer_group = public_factory(_UnboundLoad._undefer_group, ".orm.undefer_group")
-load_only = public_factory(_UnboundLoad._load_only, ".orm.load_only")
-lazyload = public_factory(_UnboundLoad._lazyload, ".orm.lazyload")
-lazyload_all = public_factory(_UnboundLoad._lazyload_all, ".orm.lazyload_all")
-subqueryload = public_factory(_UnboundLoad._subqueryload, ".orm.subqueryload")
-subqueryload_all = public_factory(_UnboundLoad._subqueryload_all, ".orm.subqueryload_all")
-immediateload = public_factory(_UnboundLoad._immediateload, ".orm.immediateload")
-noload = public_factory(_UnboundLoad._noload, ".orm.noload")
+defer = strategy_options.defer._unbound_fn
+undefer = strategy_options.undefer._unbound_fn
+undefer_group = strategy_options.undefer_group._unbound_fn
+load_only = strategy_options.load_only._unbound_fn
+lazyload = strategy_options.lazyload._unbound_fn
+lazyload_all = strategy_options.lazyload_all._unbound_all_fn
+subqueryload = strategy_options.subqueryload._unbound_fn
+subqueryload_all = strategy_options.subqueryload_all._unbound_all_fn
+immediateload = strategy_options.immediateload._unbound_fn
+noload = strategy_options.noload._unbound_fn
+defaultload = strategy_options.defaultload._unbound_fn
 
 def eagerload(*args, **kwargs):
     """A synonym for :func:`joinedload()`."""

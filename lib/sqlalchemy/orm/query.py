@@ -3256,28 +3256,29 @@ class QueryContext(object):
 class AliasOption(interfaces.MapperOption):
 
     def __init__(self, alias):
-        """Return a :class:`.MapperOption` that will indicate to the query that
-        the main table has been aliased.
+        """Return a :class:`.MapperOption` that will indicate to the :class:`.Query`
+        that the main table has been aliased.
 
-        This is used in the very rare case that :func:`.contains_eager`
+        This is a seldom-used option to suit the
+        very rare case that :func:`.contains_eager`
         is being used in conjunction with a user-defined SELECT
         statement that aliases the parent table.  E.g.::
 
             # define an aliased UNION called 'ulist'
-            statement = users.select(users.c.user_id==7).\\
+            ulist = users.select(users.c.user_id==7).\\
                             union(users.select(users.c.user_id>7)).\\
                             alias('ulist')
 
             # add on an eager load of "addresses"
-            statement = statement.outerjoin(addresses).\\
+            statement = ulist.outerjoin(addresses).\\
                             select().apply_labels()
 
             # create query, indicating "ulist" will be an
             # alias for the main table, "addresses"
             # property should be eager loaded
             query = session.query(User).options(
-                                    contains_alias('ulist'),
-                                    contains_eager('addresses'))
+                                    contains_alias(ulist),
+                                    contains_eager(User.addresses))
 
             # then get results via the statement
             results = query.from_statement(statement).all()
