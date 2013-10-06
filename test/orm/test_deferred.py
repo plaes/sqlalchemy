@@ -365,6 +365,23 @@ class DeferredOptionsTest(AssertsCompiledSQL, _fixtures.FixtureTest):
             "SELECT orders.description AS orders_description, "
             "orders.isopen AS orders_isopen FROM orders")
 
+    def test_load_only_w_deferred(self):
+        orders, Order = self.tables.orders, self.classes.Order
+
+        mapper(Order, orders, properties={
+                "description": deferred(orders.c.description)
+            })
+
+        sess = create_session()
+        q = sess.query(Order).options(
+                    load_only("isopen", "description"),
+                    undefer("user_id")
+                )
+        self.assert_compile(q,
+            "SELECT orders.description AS orders_description, "
+            "orders.user_id AS orders_user_id, "
+            "orders.isopen AS orders_isopen FROM orders")
+
     def test_load_only_parent_specific(self):
         User = self.classes.User
         Address = self.classes.Address
