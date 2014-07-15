@@ -821,6 +821,14 @@ def _relationships_for_fks(automap_base, map_config, table_to_map_config,
 
             create_backref = backref_name not in referred_cfg.properties
 
+            if relationship_name in local_table.columns:
+                util.warn("Detected equal relationship name and foreign key "
+                          "column name '%s.%s'. Renaming the relationship to "
+                          "'%s_' instead. " %
+                          (local_table.name, relationship_name,
+                          relationship_name))
+                relationship_name = '%s_' % relationship_name
+
             if relationship_name not in map_config.properties:
                 if create_backref:
                     backref_obj = generate_relationship(
